@@ -1,12 +1,12 @@
 const std = @import("std");
 
-pub const Token = union(enum) {
+pub const Type = enum {
     illegal,
     eof,
 
     // Identifiers + literals
-    ident: []const u8,
-    int: []const u8,
+    ident,
+    int,
 
     // Operators
     assign,
@@ -38,16 +38,58 @@ pub const Token = union(enum) {
     @"else",
     @"return",
 
-    pub fn keyword(ident: []const u8) ?Token {
-        const keyword_map = std.StaticStringMap(Token).initComptime(.{
-            .{ "fn", .function },
-            .{ "let", .let },
-            .{ "true", .true },
-            .{ "false", .false },
-            .{ "if", .@"if" },
-            .{ "else", .@"else" },
-            .{ "return", .@"return" },
-        });
-        return keyword_map.get(ident);
+    pub fn name(self: Type) []const u8 {
+        return switch (self) {
+            .illegal => "ILLEGAL",
+            .eof => "EOF",
+            .ident => "IDENT",
+            .int => "INT",
+            .assign => "=",
+            .plus => "+",
+            .minus => "-",
+            .bang => "!",
+            .asterisk => "*",
+            .slash => "/",
+            .lt => "<",
+            .gt => ">",
+            .eq => "==",
+            .not_eq => "!=",
+            .comma => ",",
+            .semicolon => ";",
+            .lparen => "(",
+            .rparen => ")",
+            .lbrace => "{",
+            .rbrace => "}",
+            .function => "FUNCTION",
+            .let => "LET",
+            .true => "TRUE",
+            .false => "FALSE",
+            .@"if" => "IF",
+            .@"else" => "ELSE",
+            .@"return" => "RETURN",
+        };
     }
 };
+
+pub const Location = struct {
+    line: usize,
+    column: usize,
+};
+
+token_type: Type,
+literal: []const u8,
+location: Location,
+
+const keyword_map = std.StaticStringMap(Type).initComptime(.{
+    .{ "fn", .function },
+    .{ "let", .let },
+    .{ "true", .true },
+    .{ "false", .false },
+    .{ "if", .@"if" },
+    .{ "else", .@"else" },
+    .{ "return", .@"return" },
+});
+
+pub fn keyword(ident: []const u8) ?Type {
+    return keyword_map.get(ident);
+}

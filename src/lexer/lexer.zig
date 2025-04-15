@@ -1,122 +1,146 @@
 const std = @import("std");
 const testing = std.testing;
 
-const Token = @import("token.zig").Token;
+pub const Token = @import("token.zig");
 
-pub const Lexer = struct {
-    input: []const u8,
-    pos: usize,
-    read_pos: usize,
-    ch: u8,
+input: []const u8,
+pos: usize = 0,
+read_pos: usize = 0,
+ch: u8 = 0,
+location: Token.Location = .{ .line = 1, .column = 1 },
 
-    const Self = @This();
+const Self = @This();
 
-    pub fn init(input: []const u8) Self {
-        var lexer = Self{
-            .input = input,
-            .pos = 0,
-            .read_pos = 0,
-            .ch = 0,
-        };
-        lexer.readChar();
-        return lexer;
+pub fn init(input: []const u8) Self {
+    var lexer = Self{
+        .input = input,
+    };
+    lexer.readChar();
+    return lexer;
+}
+
+pub fn next(self: *Self) Token {
+    self.skipWhitespace();
+
+    const start_pos = self.pos;
+    const token_type: Token.Type = switch (self.ch) {
+        0 => return .{
+            .token_type = .eof,
+            .literal = "",
+            .location = self.location,
+        },
+
+        '=' => peek: {
+            if (self.peekChar() == '=') {
+                self.readChar();
+                break :peek .eq;
+            }
+            break :peek .assign;
+        },
+        '+' => .plus,
+        '-' => .minus,
+        '!' => peek: {
+            if (self.peekChar() == '=') {
+                self.readChar();
+                break :peek .not_eq;
+            }
+            break :peek .bang;
+        },
+        '*' => .asterisk,
+        '/' => .slash,
+        '<' => .lt,
+        '>' => .gt,
+
+        ',' => .comma,
+        ';' => .semicolon,
+
+        '(' => .lparen,
+        ')' => .rparen,
+        '{' => .lbrace,
+        '}' => .rbrace,
+        'a'...'z', 'A'...'Z' => {
+            const ident = self.readIdent();
+            if (Token.keyword(ident)) |kw_token| {
+                return .{
+                    .token_type = kw_token,
+                    .literal = ident,
+                    .location = self.location,
+                };
+            }
+            return .{
+                .token_type = .ident,
+                .literal = ident,
+                .location = self.location,
+            };
+        },
+        '0'...'9' => {
+            return .{
+                .token_type = .int,
+                .literal = self.readNumber(),
+                .location = self.location,
+            };
+        },
+
+        else => .illegal,
+    };
+
+    self.readChar();
+    return .{
+        .token_type = token_type,
+        .literal = self.input[start_pos..self.pos],
+        .location = self.location,
+    };
+}
+
+fn hasNextChar(self: *Self) bool {
+    return self.read_pos < self.input.len;
+}
+
+fn readChar(self: *Self) void {
+    if (!self.hasNextChar()) {
+        self.ch = 0;
+        return;
+    }
+    if (self.ch == '\n') {
+        self.location.line += 1;
+        self.location.column = 0;
+    } else {
+        self.location.column += 1;
     }
 
-    fn hasNextChar(self: *Self) bool {
-        return self.read_pos < self.input.len;
+    self.ch = self.input[self.read_pos];
+    self.pos = self.read_pos;
+    self.read_pos += 1;
+}
+
+fn peekChar(self: *Self) u8 {
+    if (!self.hasNextChar()) {
+        return 0;
     }
+    return self.input[self.read_pos];
+}
 
-    fn readChar(self: *Self) void {
-        if (!self.hasNextChar()) {
-            self.ch = 0;
-        } else {
-            self.ch = self.input[self.read_pos];
-        }
-        self.pos = self.read_pos;
-        self.read_pos += 1;
-    }
-
-    fn peekChar(self: *Self) u8 {
-        if (!self.hasNextChar()) {
-            return 0;
-        }
-        return self.input[self.read_pos];
-    }
-
-    fn readIdent(self: *Self) []const u8 {
-        const start_pos = self.pos;
-        while (std.ascii.isAlphabetic(self.ch) or self.ch == '_') {
-            self.readChar();
-        }
-        return self.input[start_pos..self.pos];
-    }
-
-    fn readNumber(self: *Self) []const u8 {
-        const start_pos = self.pos;
-        while (std.ascii.isDigit(self.ch)) {
-            self.readChar();
-        }
-        return self.input[start_pos..self.pos];
-    }
-
-    fn skipWhitespace(self: *Self) void {
-        while (std.ascii.isWhitespace(self.ch)) {
-            self.readChar();
-        }
-    }
-
-    fn nextToken(self: *Self) Token {
-        self.skipWhitespace();
-
-        const tok: Token = switch (self.ch) {
-            0 => .eof,
-
-            '=' => peek: {
-                if (self.peekChar() == '=') {
-                    self.readChar();
-                    break :peek .eq;
-                }
-                break :peek .assign;
-            },
-            '+' => .plus,
-            '-' => .minus,
-            '!' => peek: {
-                if (self.peekChar() == '=') {
-                    self.readChar();
-                    break :peek .not_eq;
-                }
-                break :peek .bang;
-            },
-            '*' => .asterisk,
-            '/' => .slash,
-            '<' => .lt,
-            '>' => .gt,
-
-            ',' => .comma,
-            ';' => .semicolon,
-
-            '(' => .lparen,
-            ')' => .rparen,
-            '{' => .lbrace,
-            '}' => .rbrace,
-            'a'...'z', 'A'...'Z' => {
-                const ident = self.readIdent();
-                if (Token.keyword(ident)) |kw_token| {
-                    return kw_token;
-                }
-                return .{ .ident = ident };
-            },
-            '0'...'9' => {
-                return .{ .int = self.readNumber() };
-            },
-
-            else => .illegal,
-        };
-
+fn readIdent(self: *Self) []const u8 {
+    const start_pos = self.pos;
+    while (std.ascii.isAlphabetic(self.ch) or self.ch == '_') {
         self.readChar();
-        return tok;
     }
-};
+    return self.input[start_pos..self.pos];
+}
+
+fn readNumber(self: *Self) []const u8 {
+    const start_pos = self.pos;
+    while (std.ascii.isDigit(self.ch)) {
+        self.readChar();
+    }
+    return self.input[start_pos..self.pos];
+}
+
+fn skipWhitespace(self: *Self) void {
+    while (std.ascii.isWhitespace(self.ch)) {
+        self.readChar();
+    }
+}
 
 test "monkey" {
     const input =
@@ -137,60 +161,60 @@ test "monkey" {
         \\10 != 9;
     ;
 
-    const expectedTokens = [_]Token{
+    const expectedTokenTypes = [_]Token.Type{
         .let,
-        .{ .ident = "five" },
+        .ident,
         .assign,
-        .{ .int = "5" },
+        .int,
         .semicolon,
         .let,
-        .{ .ident = "ten" },
+        .ident,
         .assign,
-        .{ .int = "10" },
+        .int,
         .semicolon,
         .let,
-        .{ .ident = "add" },
+        .ident,
         .assign,
         .function,
         .lparen,
-        .{ .ident = "x" },
+        .ident,
         .comma,
-        .{ .ident = "y" },
+        .ident,
         .rparen,
         .lbrace,
-        .{ .ident = "x" },
+        .ident,
         .plus,
-        .{ .ident = "y" },
+        .ident,
         .semicolon,
         .rbrace,
         .semicolon,
         .let,
-        .{ .ident = "result" },
+        .ident,
         .assign,
-        .{ .ident = "add" },
+        .ident,
         .lparen,
-        .{ .ident = "five" },
+        .ident,
         .comma,
-        .{ .ident = "ten" },
+        .ident,
         .rparen,
         .semicolon,
         .bang,
         .minus,
         .slash,
         .asterisk,
-        .{ .int = "5" },
+        .int,
         .semicolon,
-        .{ .int = "5" },
+        .int,
         .lt,
-        .{ .int = "10" },
+        .int,
         .gt,
-        .{ .int = "5" },
+        .int,
         .semicolon,
         .@"if",
         .lparen,
-        .{ .int = "5" },
+        .int,
         .lt,
-        .{ .int = "10" },
+        .int,
         .rparen,
         .lbrace,
         .@"return",
@@ -203,20 +227,20 @@ test "monkey" {
         .false,
         .semicolon,
         .rbrace,
-        .{ .int = "10" },
+        .int,
         .eq,
-        .{ .int = "10" },
+        .int,
         .semicolon,
-        .{ .int = "10" },
+        .int,
         .not_eq,
-        .{ .int = "9" },
+        .int,
         .semicolon,
     };
 
-    var lexer = Lexer.init(input);
+    var lexer = init(input);
 
-    for (expectedTokens) |expected| {
-        const actual = lexer.nextToken();
+    for (expectedTokenTypes) |expected| {
+        const actual = lexer.next().token_type;
         try testing.expectEqualDeep(expected, actual);
     }
 }
