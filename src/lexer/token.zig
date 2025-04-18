@@ -74,6 +74,14 @@ pub const Type = enum {
 pub const Location = struct {
     line: usize,
     column: usize,
+
+    pub fn toString(self: Location) []const u8 {
+        return std.fmt.allocPrint(
+            std.heap.page_allocator,
+            "{d}:{d}",
+            .{ self.line, self.column },
+        ) catch unreachable;
+    }
 };
 
 token_type: Type,
