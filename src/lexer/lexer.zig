@@ -7,7 +7,7 @@ input: []const u8,
 pos: usize = 0,
 read_pos: usize = 0,
 ch: u8 = 0,
-location: Token.Location = .{ .line = 1, .column = 1 },
+location: Token.Location = .{ .line = 1, .column = 0 },
 
 const Self = @This();
 
@@ -23,11 +23,12 @@ pub fn next(self: *Self) Token {
     self.skipWhitespace();
 
     const start_pos = self.pos;
+    const start_loc = self.location;
     const token_type: Token.Type = switch (self.ch) {
         0 => return .{
             .token_type = .eof,
             .literal = "",
-            .location = self.location,
+            .location = start_loc,
         },
 
         '=' => peek: {
@@ -64,20 +65,20 @@ pub fn next(self: *Self) Token {
                 return .{
                     .token_type = kw_token,
                     .literal = ident,
-                    .location = self.location,
+                    .location = start_loc,
                 };
             }
             return .{
                 .token_type = .ident,
                 .literal = ident,
-                .location = self.location,
+                .location = start_loc,
             };
         },
         '0'...'9' => {
             return .{
                 .token_type = .int,
                 .literal = self.readNumber(),
-                .location = self.location,
+                .location = start_loc,
             };
         },
 
