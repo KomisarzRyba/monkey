@@ -1,11 +1,13 @@
 const std = @import("std");
 
 const Lexer = @import("../lexer/lexer.zig");
+const Parser = @import("../parser/parser.zig");
 
 pub const Repl = struct {
     in: std.io.AnyReader,
     out: std.io.AnyWriter,
-    prompt: []const u8,
+    prompt: []const u8 = "> ",
+    start_msg: ?[]const u8 = null,
 
     const Self = @This();
 
@@ -13,7 +15,6 @@ pub const Repl = struct {
         return Self{
             .in = in,
             .out = out,
-            .prompt = "> ",
         };
     }
 
@@ -21,7 +22,17 @@ pub const Repl = struct {
         self.prompt = prompt;
     }
 
+    pub fn setStartMsg(self: *Self, msg: []const u8) void {
+        self.start_msg = msg;
+    }
+
     pub fn run(self: Self) !void {
+        if (self.start_msg) |msg| {
+            try self.out.print("{s}\n", .{msg});
+        }
+
+        const allocator = std.heap.page_allocator;
+
         while (true) {
             try self.out.print("{s}", .{self.prompt});
 
@@ -34,15 +45,15 @@ pub const Repl = struct {
                 return err;
             };
 
-            try self.out.print("{s}\n", .{line_buf.buffer});
-
             var lexer = Lexer.init(&line_buf.buffer);
-            while (true) {
-                const tok = lexer.next();
-                try self.out.print("{}\n", .{tok});
-                if (tok.token_type == .eof) {
-                    break;
-                }
+            var parser = Parser.init(allocator, &lexer);
+            defer parser.deinit();
+
+            const program = try parser.parseProgram();
+            try self.out.print("{s}\n", .{program.toString()});
+
+            for (parser.getErrors()) |err| {
+                try self.out.print("| Error: {s}\n", .{err.toString()});
             }
         }
     }
