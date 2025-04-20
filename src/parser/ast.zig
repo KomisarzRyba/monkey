@@ -15,6 +15,7 @@ pub const Node = union(enum) {
 };
 
 pub const Statement = union(enum) {
+    program: Program,
     let: LetStatement,
     @"return": ReturnStatement,
     expression: ExpressionStatement,
@@ -22,11 +23,16 @@ pub const Statement = union(enum) {
 
     pub fn toString(self: Statement) []const u8 {
         return switch (self) {
+            .program => |p| p.toString(),
             .let => |s| s.toString(),
             .@"return" => |s| s.toString(),
             .expression => |s| s.toString(),
             .block => |s| s.toString(),
         };
+    }
+
+    pub fn node(self: Statement) Node {
+        return Node{ .statement = self };
     }
 };
 
@@ -107,6 +113,10 @@ pub const Expression = union(enum) {
             .function_literal => |e| e.toString(),
             .call => |e| e.toString(),
         };
+    }
+
+    pub fn node(self: Expression) Node {
+        return Node{ .expression = self };
     }
 };
 
@@ -314,5 +324,9 @@ pub const Program = struct {
         }
 
         return program_str.toOwnedSlice() catch unreachable;
+    }
+
+    pub fn node(self: Program) Node {
+        return Node{ .statement = .{ .program = self } };
     }
 };
