@@ -18,12 +18,14 @@ pub const Statement = union(enum) {
     let: LetStatement,
     @"return": ReturnStatement,
     expression: ExpressionStatement,
+    block: BlockStatement,
 
     pub fn toString(self: Statement) []const u8 {
         return switch (self) {
             .let => |s| s.toString(),
             .@"return" => |s| s.toString(),
             .expression => |s| s.toString(),
+            .block => |s| s.toString(),
         };
     }
 };
@@ -68,12 +70,30 @@ pub const ExpressionStatement = struct {
     }
 };
 
+pub const BlockStatement = struct {
+    token: Token,
+    statements: []Statement,
+
+    pub fn toString(self: BlockStatement) []const u8 {
+        var block_str = std.ArrayList(u8).init(std.heap.page_allocator);
+        defer block_str.deinit();
+
+        for (self.statements) |stmt| {
+            block_str.appendSlice(stmt.toString()) catch unreachable;
+        }
+
+        return block_str.toOwnedSlice() catch unreachable;
+    }
+};
+
 pub const Expression = union(enum) {
     identifier: Identifier,
-    integer_literal: IntegerLiteral,
-    prefix: Prefix,
-    infix: Infix,
-    boolean_literal: BooleanLiteral,
+    integer_literal: IntegerLiteralExpression,
+    prefix: PrefixExpression,
+    infix: InfixExpression,
+    boolean_literal: BooleanLiteralExpression,
+    @"if": IfExpression,
+    function_literal: FunctionLiteralExpression,
 
     pub fn toString(self: Expression) []const u8 {
         return switch (self) {
@@ -82,6 +102,8 @@ pub const Expression = union(enum) {
             .prefix => |e| e.toString(),
             .infix => |e| e.toString(),
             .boolean_literal => |e| e.toString(),
+            .@"if" => |e| e.toString(),
+            .function_literal => |e| e.toString(),
         };
     }
 };
@@ -95,11 +117,11 @@ pub const Identifier = struct {
     }
 };
 
-pub const IntegerLiteral = struct {
+pub const IntegerLiteralExpression = struct {
     token: Token,
     value: i64,
 
-    pub fn toString(self: IntegerLiteral) []const u8 {
+    pub fn toString(self: IntegerLiteralExpression) []const u8 {
         return std.fmt.allocPrint(
             std.heap.page_allocator,
             "{d}",
@@ -108,12 +130,12 @@ pub const IntegerLiteral = struct {
     }
 };
 
-pub const Prefix = struct {
+pub const PrefixExpression = struct {
     token: Token,
     operator: PrefixOperator,
     right: *Expression,
 
-    pub fn toString(self: Prefix) []const u8 {
+    pub fn toString(self: PrefixExpression) []const u8 {
         return std.fmt.allocPrint(
             std.heap.page_allocator,
             "({s}{s})",
@@ -142,13 +164,13 @@ pub const PrefixOperator = enum {
     }
 };
 
-pub const Infix = struct {
+pub const InfixExpression = struct {
     token: Token,
     left: *Expression,
     operator: InfixOperator,
     right: *Expression,
 
-    pub fn toString(self: Infix) []const u8 {
+    pub fn toString(self: InfixExpression) []const u8 {
         return std.fmt.allocPrint(
             std.heap.page_allocator,
             "({s} {s} {s})",
@@ -195,12 +217,61 @@ pub const InfixOperator = enum {
     }
 };
 
-pub const BooleanLiteral = struct {
+pub const BooleanLiteralExpression = struct {
     token: Token,
     value: bool,
 
-    pub fn toString(self: BooleanLiteral) []const u8 {
+    pub fn toString(self: BooleanLiteralExpression) []const u8 {
         return if (self.value) "true" else "false";
+    }
+};
+
+pub const IfExpression = struct {
+    token: Token,
+    condition: *Expression,
+    consequence: *BlockStatement,
+    alternative: ?*BlockStatement,
+
+    pub fn toString(self: IfExpression) []const u8 {
+        var if_str = std.ArrayList(u8).init(std.heap.page_allocator);
+        defer if_str.deinit();
+
+        if_str.appendSlice("if (") catch unreachable;
+        if_str.appendSlice(self.condition.toString()) catch unreachable;
+        if_str.appendSlice(") ") catch unreachable;
+        if_str.appendSlice(self.consequence.toString()) catch unreachable;
+
+        if (self.alternative) |alt| {
+            if_str.appendSlice(" else ") catch unreachable;
+            if_str.appendSlice(alt.toString()) catch unreachable;
+        }
+
+        return if_str.toOwnedSlice() catch unreachable;
+    }
+};
+
+pub const FunctionLiteralExpression = struct {
+    token: Token,
+    parameters: []Identifier,
+    body: *BlockStatement,
+
+    pub fn toString(self: FunctionLiteralExpression) []const u8 {
+        var func_str = std.ArrayList(u8).init(std.heap.page_allocator);
+        defer func_str.deinit();
+
+        func_str.appendSlice("fn (") catch unreachable;
+
+        for (self.parameters, 0..) |param, i| {
+            if (i > 0) {
+                func_str.appendSlice(", ") catch unreachable;
+            }
+            func_str.appendSlice(param.toString()) catch unreachable;
+        }
+
+        func_str.appendSlice(") ") catch unreachable;
+        func_str.appendSlice(self.body.toString()) catch unreachable;
+
+        return func_str.toOwnedSlice() catch unreachable;
     }
 };
 

@@ -35,6 +35,8 @@ pub fn init(allocator: Allocator, lexer: *Lexer) Self {
     self.registerPrefix(.true, parseBooleanLiteral) catch unreachable;
     self.registerPrefix(.false, parseBooleanLiteral) catch unreachable;
     self.registerPrefix(.lparen, parseGroupedExpression) catch unreachable;
+    self.registerPrefix(.@"if", parseIfExpression) catch unreachable;
+    self.registerPrefix(.function, parseFunctionLiteral) catch unreachable;
 
     self.registerInfix(.plus, parseInfixExpression) catch unreachable;
     self.registerInfix(.minus, parseInfixExpression) catch unreachable;
@@ -148,6 +150,26 @@ fn parseExpressionStatement(self: *Self) !?ast.ExpressionStatement {
     };
 }
 
+fn parseBlockStatement(self: *Self) !?ast.BlockStatement {
+    const block_token = self.cur_token;
+
+    self.nextToken();
+
+    var statements = std.ArrayList(ast.Statement).init(self.arena.allocator());
+
+    while (!self.curTokenIs(.rbrace) and !self.curTokenIs(.eof)) {
+        if (try self.parseStatement()) |stmt| {
+            try statements.append(stmt);
+        }
+        self.nextToken();
+    }
+
+    return ast.BlockStatement{
+        .token = block_token,
+        .statements = try statements.toOwnedSlice(),
+    };
+}
+
 fn parseExpression(self: *Self, precedence: Precedence) !?ast.Expression {
     const prefix_fn = self.prefix_parse_fns.get(self.cur_token.token_type) orelse return null;
     var left_expr = try prefix_fn(self) orelse return null;
@@ -175,7 +197,7 @@ fn parseIntegerLiteral(self: *Self) !?ast.Expression {
     const value = std.fmt.parseInt(i64, self.cur_token.literal, 10) catch unreachable;
 
     return ast.Expression{
-        .integer_literal = ast.IntegerLiteral{
+        .integer_literal = ast.IntegerLiteralExpression{
             .token = self.cur_token,
             .value = value,
         },
@@ -190,7 +212,7 @@ fn parsePrefixExpression(self: *Self) !?ast.Expression {
     right_expr.* = try self.parseExpression(.prefix) orelse return null;
 
     return ast.Expression{
-        .prefix = ast.Prefix{
+        .prefix = ast.PrefixExpression{
             .token = prefix_token,
             .operator = ast.PrefixOperator.fromTokenType(prefix_token.token_type),
             .right = right_expr,
@@ -211,7 +233,7 @@ fn parseInfixExpression(self: *Self, left: ast.Expression) !?ast.Expression {
     right_expr.* = try self.parseExpression(precedence) orelse return null;
 
     return ast.Expression{
-        .infix = ast.Infix{
+        .infix = ast.InfixExpression{
             .token = infix_token,
             .left = left_expr,
             .operator = ast.InfixOperator.fromTokenType(infix_token.token_type),
@@ -222,11 +244,113 @@ fn parseInfixExpression(self: *Self, left: ast.Expression) !?ast.Expression {
 
 fn parseBooleanLiteral(self: *Self) !?ast.Expression {
     return ast.Expression{
-        .boolean_literal = ast.BooleanLiteral{
+        .boolean_literal = ast.BooleanLiteralExpression{
             .token = self.cur_token,
             .value = self.cur_token.token_type == .true,
         },
     };
+}
+
+fn parseIfExpression(self: *Self) !?ast.Expression {
+    const if_token = self.cur_token;
+
+    if (!self.expectPeek(.lparen)) {
+        return null;
+    }
+    self.nextToken();
+
+    const condition = try self.arena.allocator().create(ast.Expression);
+    condition.* = try self.parseExpression(.lowest) orelse return null;
+
+    if (!self.expectPeek(.rparen)) {
+        return null;
+    }
+
+    if (!self.expectPeek(.lbrace)) {
+        return null;
+    }
+
+    const consequence = try self.arena.allocator().create(ast.BlockStatement);
+    consequence.* = try self.parseBlockStatement() orelse return null;
+
+    var alternative: ?*ast.BlockStatement = null;
+    if (self.peekTokenIs(.@"else")) {
+        self.nextToken();
+
+        if (!self.expectPeek(.lbrace)) {
+            return null;
+        }
+
+        alternative = try self.arena.allocator().create(ast.BlockStatement);
+        alternative.?.* = try self.parseBlockStatement() orelse return null;
+    }
+
+    return ast.Expression{
+        .@"if" = ast.IfExpression{
+            .token = if_token,
+            .condition = condition,
+            .consequence = consequence,
+            .alternative = alternative,
+        },
+    };
+}
+
+fn parseFunctionLiteral(self: *Self) !?ast.Expression {
+    const fn_token = self.cur_token;
+
+    if (!self.expectPeek(.lparen)) return null;
+
+    const parameters = try self.parseFunctionParameters() orelse return null;
+
+    if (!self.expectPeek(.lbrace)) {
+        return null;
+    }
+
+    const body = try self.arena.allocator().create(ast.BlockStatement);
+    body.* = try self.parseBlockStatement() orelse return null;
+
+    return ast.Expression{
+        .function_literal = ast.FunctionLiteralExpression{
+            .token = fn_token,
+            .parameters = parameters,
+            .body = body,
+        },
+    };
+}
+
+fn parseFunctionParameters(self: *Self) !?[]ast.Identifier {
+    var params = std.ArrayList(ast.Identifier).init(self.arena.allocator());
+    errdefer params.deinit();
+
+    if (self.peekTokenIs(.rparen)) {
+        self.nextToken();
+        return try params.toOwnedSlice();
+    }
+
+    self.nextToken();
+
+    const first_param = ast.Identifier{
+        .token = self.cur_token,
+        .value = self.cur_token.literal,
+    };
+    try params.append(first_param);
+
+    while (self.peekTokenIs(.comma)) {
+        self.nextToken();
+        self.nextToken();
+
+        const param = ast.Identifier{
+            .token = self.cur_token,
+            .value = self.cur_token.literal,
+        };
+        try params.append(param);
+    }
+
+    if (!self.expectPeek(.rparen)) {
+        return null;
+    }
+
+    return try params.toOwnedSlice();
 }
 
 fn parseGroupedExpression(self: *Self) !?ast.Expression {
@@ -517,7 +641,7 @@ test "boolean literal expression" {
     const expected_values = [_]bool{ true, false };
     for (expected_values, 0..) |value, i| {
         const stmt = program.statements[i];
-        try testing.expectEqual(value, stmt.expression.expression.boolean_literal.value);
+        try testLiteralExpression(stmt.expression.expression, value);
     }
     std.debug.print("program:\n{s}\n", .{program.toString()});
 }
@@ -569,6 +693,134 @@ test "operator precedence parsing" {
     }
 }
 
+test "if expression" {
+    const allocator = testing.allocator;
+    const input = "if (x < y) { x }";
+    var lexer = Lexer.init(input);
+    var p = init(allocator, &lexer);
+
+    const program = try p.parseProgram();
+    defer p.deinit();
+
+    if (p.getErrors().len > 0) {
+        for (p.getErrors()) |err| {
+            std.debug.print("parser error: {s}\n", .{err.toString()});
+        }
+    }
+
+    try testing.expectEqual(1, program.statements.len);
+
+    const stmt = program.statements[0];
+    try testInfixExpression(stmt.expression.expression.@"if".condition.*, "x", ast.InfixOperator.lt, "y");
+    try testing.expectEqual(1, stmt.expression.expression.@"if".consequence.statements.len);
+
+    const consequence_stmt = stmt.expression.expression.@"if".consequence.statements[0];
+    try testLiteralExpression(consequence_stmt.expression.expression, "x");
+
+    try testing.expectEqual(null, stmt.expression.expression.@"if".alternative);
+
+    std.debug.print("program:\n{s}\n", .{program.toString()});
+}
+
+test "if else expression" {
+    const allocator = testing.allocator;
+    const input = "if (x < y) { x } else { y }";
+    var lexer = Lexer.init(input);
+    var p = init(allocator, &lexer);
+
+    const program = try p.parseProgram();
+    defer p.deinit();
+
+    if (p.getErrors().len > 0) {
+        for (p.getErrors()) |err| {
+            std.debug.print("parser error: {s}\n", .{err.toString()});
+        }
+    }
+
+    try testing.expectEqual(1, program.statements.len);
+
+    const stmt = program.statements[0];
+    try testInfixExpression(stmt.expression.expression.@"if".condition.*, "x", ast.InfixOperator.lt, "y");
+    try testing.expectEqual(1, stmt.expression.expression.@"if".consequence.statements.len);
+
+    const consequence_stmt = stmt.expression.expression.@"if".consequence.statements[0];
+    try testLiteralExpression(consequence_stmt.expression.expression, "x");
+
+    try testing.expectEqual(1, stmt.expression.expression.@"if".alternative.?.statements.len);
+
+    const alternative_stmt = stmt.expression.expression.@"if".alternative.?.statements[0];
+    try testLiteralExpression(alternative_stmt.expression.expression, "y");
+
+    std.debug.print("program:\n{s}\n", .{program.toString()});
+}
+
+test "function literal expression" {
+    const allocator = testing.allocator;
+    const input = "fn(x, y) { x + y; }";
+    var lexer = Lexer.init(input);
+    var p = init(allocator, &lexer);
+
+    const program = try p.parseProgram();
+    defer p.deinit();
+
+    if (p.getErrors().len > 0) {
+        for (p.getErrors()) |err| {
+            std.debug.print("parser error: {s}\n", .{err.toString()});
+        }
+    }
+
+    try testing.expectEqual(1, program.statements.len);
+
+    const fn_lit = program.statements[0].expression.expression.function_literal;
+    try testing.expectEqual(2, fn_lit.parameters.len);
+    try testIdentifier(fn_lit.parameters[0], "x");
+    try testIdentifier(fn_lit.parameters[1], "y");
+
+    try testing.expectEqual(1, fn_lit.body.statements.len);
+    const body_stmt = fn_lit.body.statements[0];
+    try testInfixExpression(body_stmt.expression.expression, "x", ast.InfixOperator.plus, "y");
+
+    std.debug.print("program:\n{s}\n", .{program.toString()});
+}
+
+test "function parameters" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected_params: []const []const u8,
+    }{
+        .{ .input = "fn() {};", .expected_params = &.{} },
+        .{ .input = "fn(x) {};", .expected_params = &.{"x"} },
+        .{ .input = "fn(x, y, z) {};", .expected_params = &.{ "x", "y", "z" } },
+    };
+
+    const allocator = testing.allocator;
+
+    for (tests) |t| {
+        var lexer = Lexer.init(t.input);
+        var p = init(allocator, &lexer);
+
+        const program = try p.parseProgram();
+        defer p.deinit();
+
+        if (p.getErrors().len > 0) {
+            for (p.getErrors()) |err| {
+                std.debug.print("parser error: {s}\n", .{err.toString()});
+            }
+        }
+
+        try testing.expectEqual(1, program.statements.len);
+
+        const fn_lit = program.statements[0].expression.expression.function_literal;
+        try testing.expectEqual(t.expected_params.len, fn_lit.parameters.len);
+
+        for (t.expected_params, 0..) |param, i| {
+            try testIdentifier(fn_lit.parameters[i], param);
+        }
+
+        std.debug.print("program:\n{s}\n", .{program.toString()});
+    }
+}
+
 fn testInfixExpression(
     expr: ast.Expression,
     left: anytype,
@@ -582,14 +834,17 @@ fn testInfixExpression(
 }
 
 fn testLiteralExpression(expr: ast.Expression, expected: anytype) !void {
-    switch (@typeInfo(@TypeOf(expected))) {
-        .int, .comptime_int => try testIntegerLiteral(expr, expected),
-        .array => |info| {
-            std.debug.print("array type: {any}\n", .{info});
+    const T = comptime @TypeOf(expected);
+
+    switch (@typeInfo(T)) {
+        .int => try testIntegerLiteral(expr, expected),
+        .pointer => |ptr| {
+            if (@typeInfo(ptr.child).array.child != u8) unreachable;
+            try testIdentifier(expr.identifier, expected);
         },
         .bool => try testBooleanLiteral(expr, expected),
-        else => |info| {
-            std.debug.print("unexpected type: {any}\n", .{info});
+        else => |ti| {
+            std.debug.print("Unsupported type: {any}\n", .{ti});
         },
     }
 }
@@ -600,14 +855,13 @@ fn testIntegerLiteral(expr: ast.Expression, value: i64) !void {
     try testing.expectEqual(value, int_lit.value);
 }
 
-fn testIdentifier(expr: ast.Expression, value: []const u8) !void {
-    const ident = expr.identifier;
+fn testIdentifier(ident: ast.Identifier, value: []const u8) !void {
     try testing.expectEqual(.ident, ident.token.token_type);
     try testing.expectEqualStrings(value, ident.value);
 }
 
 fn testBooleanLiteral(expr: ast.Expression, value: bool) !void {
     const bool_lit = expr.boolean_literal;
-    try testing.expectEqual(.true, bool_lit.token.token_type);
+    try testing.expect(bool_lit.token.token_type == .true or bool_lit.token.token_type == .false);
     try testing.expectEqual(value, bool_lit.value);
 }
