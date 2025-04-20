@@ -2,6 +2,7 @@ const std = @import("std");
 
 const Lexer = @import("lexer/lexer.zig");
 const Parser = @import("parser/parser.zig");
+const interpreter = @import("interpreter/interpreter.zig");
 
 pub const Repl = struct {
     in: std.io.AnyReader,
@@ -50,7 +51,8 @@ pub const Repl = struct {
             defer parser.deinit();
 
             const program = try parser.parseProgram();
-            try self.out.print("{s}\n", .{program.toString()});
+            const evaluated = try interpreter.eval(program.*.node());
+            try self.out.print("{s}\n", .{evaluated.inspect()});
 
             for (parser.getErrors()) |err| {
                 try self.out.print("| Error: {s}\n", .{err.toString()});
