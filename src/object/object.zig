@@ -3,7 +3,7 @@ const Boolean = @import("boolean.zig");
 
 pub const Object = union(enum) {
     integer: Integer,
-    boolean: Boolean,
+    boolean: *const Boolean,
     null,
 
     pub fn inspect(self: Object) []const u8 {
@@ -11,6 +11,14 @@ pub const Object = union(enum) {
             .integer => |i| i.inspect(),
             .boolean => |b| b.inspect(),
             .null => "null",
+        };
+    }
+
+    pub fn eq(self: Object, other: Object) bool {
+        return switch (self) {
+            .integer => |i| i.eq(other),
+            .boolean => |b| b.eq(other),
+            .null => self == .null and other == .null,
         };
     }
 };

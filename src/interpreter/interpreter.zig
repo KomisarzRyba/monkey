@@ -3,7 +3,8 @@ const testing = std.testing;
 
 const Lexer = @import("../lexer/lexer.zig");
 const object = @import("../object/object.zig");
-const boolean = @import("../object/boolean.zig");
+const Boolean = @import("../object/boolean.zig");
+const Integer = @import("../object/integer.zig");
 const ast = @import("../parser/ast.zig");
 const Parser = @import("../parser/parser.zig");
 
@@ -25,14 +26,19 @@ pub fn eval(node: ast.Node) !object.Object {
         },
         .expression => |expr| switch (expr) {
             .integer_literal => |int_lit| .{ .integer = .{ .value = int_lit.value } },
-            else => {
-                std.debug.print("Unknown expression type: {}\n", .{expr});
-                unreachable;
-            },
-            .boolean_literal => |bool_lit| .{ .boolean = if (bool_lit.value) boolean.True else boolean.False },
+            .boolean_literal => |bool_lit| .{ .boolean = if (bool_lit.value) &Boolean.True else &Boolean.False },
             .prefix => |prefix_expr| {
                 const right = try eval(prefix_expr.right.node());
                 return evalPrefixExpression(prefix_expr.operator, right);
+            },
+            .infix => |infix_expr| {
+                const left = try eval(infix_expr.left.node());
+                const right = try eval(infix_expr.right.node());
+                return evalInfixExpression(infix_expr.operator, left, right);
+            },
+            else => {
+                std.debug.print("Unknown expression type: {}\n", .{expr});
+                unreachable;
             },
         },
     };
@@ -47,9 +53,9 @@ fn evalPrefixExpression(operator: ast.PrefixOperator, right: object.Object) !obj
 
 fn evalBangOperatorExpression(right: object.Object) !object.Object {
     return switch (right) {
-        .boolean => |bool_obj| .{ .boolean = if (bool_obj.value) boolean.False else boolean.True },
-        .integer => |int_obj| .{ .boolean = if (int_obj.value == 0) boolean.True else boolean.False },
-        .null => .{ .boolean = boolean.True },
+        .boolean => |bool_obj| .{ .boolean = if (bool_obj.value) &Boolean.False else &Boolean.True },
+        .integer => |int_obj| .{ .boolean = if (int_obj.value == 0) &Boolean.True else &Boolean.False },
+        .null => .{ .boolean = &Boolean.True },
     };
 }
 
@@ -58,6 +64,29 @@ fn evalMinusPrefixOperatorExpression(right: object.Object) !object.Object {
         .integer => |int_obj| .{ .integer = .{ .value = -int_obj.value } },
         .boolean => |bool_obj| .{ .integer = .{ .value = if (bool_obj.value) -1 else 0 } },
         else => unreachable,
+    };
+}
+
+fn evalInfixExpression(operator: ast.InfixOperator, left: object.Object, right: object.Object) !object.Object {
+    if (left == .integer and right == .integer) {
+        return evalIntegerInfixExpression(operator, left.integer, right.integer);
+    } else if (operator == .eq) {
+        return .{ .boolean = if (left.eq(right)) &Boolean.True else &Boolean.False };
+    } else if (operator == .not_eq) {
+        return .{ .boolean = if (!left.eq(right)) &Boolean.True else &Boolean.False };
+    } else unreachable;
+}
+
+fn evalIntegerInfixExpression(operator: ast.InfixOperator, left: Integer, right: Integer) !object.Object {
+    return switch (operator) {
+        .plus => .{ .integer = .{ .value = left.value + right.value } },
+        .minus => .{ .integer = .{ .value = left.value - right.value } },
+        .asterisk => .{ .integer = .{ .value = left.value * right.value } },
+        .slash => .{ .integer = .{ .value = @divFloor(left.value, right.value) } },
+        .lt => .{ .boolean = if (left.value < right.value) &Boolean.True else &Boolean.False },
+        .gt => .{ .boolean = if (left.value > right.value) &Boolean.True else &Boolean.False },
+        .eq => .{ .boolean = if (left.value == right.value) &Boolean.True else &Boolean.False },
+        .not_eq => .{ .boolean = if (left.value != right.value) &Boolean.True else &Boolean.False },
     };
 }
 
@@ -89,6 +118,17 @@ test "integer expression" {
         .{ .input = "10;", .expected = 10 },
         .{ .input = "-5;", .expected = -5 },
         .{ .input = "-10;", .expected = -10 },
+        .{ .input = "5 + 5 + 5 + 5 - 10;", .expected = 10 },
+        .{ .input = "2 * 2 * 2 * 2 * 2;", .expected = 32 },
+        .{ .input = "-50 + 100 + -50;", .expected = 0 },
+        .{ .input = "5 * 2 + 10;", .expected = 20 },
+        .{ .input = "5 + 2 * 10;", .expected = 25 },
+        .{ .input = "20 + 2 * -10;", .expected = 0 },
+        .{ .input = "50 / 2 * 2 + 10;", .expected = 60 },
+        .{ .input = "2 * (5 + 10);", .expected = 30 },
+        .{ .input = "3 * 3 * 3 + 10;", .expected = 37 },
+        .{ .input = "3 * (3 * 3) + 10;", .expected = 37 },
+        .{ .input = "(5 + 10 * 2 + 15 / 3) * 2 + -10;", .expected = 50 },
     };
 
     for (tests) |t| {
@@ -104,6 +144,24 @@ test "boolean expression" {
     }{
         .{ .input = "true;", .expected = true },
         .{ .input = "false;", .expected = false },
+        .{ .input = "1 < 2;", .expected = true },
+        .{ .input = "1 > 2;", .expected = false },
+        .{ .input = "1 < 1;", .expected = false },
+        .{ .input = "1 > 1;", .expected = false },
+        .{ .input = "1 == 1;", .expected = true },
+        .{ .input = "1 != 1;", .expected = false },
+        .{ .input = "1 == 2;", .expected = false },
+        .{ .input = "1 != 2;", .expected = true },
+        .{ .input = "true == true;", .expected = true },
+        .{ .input = "false == false;", .expected = true },
+        .{ .input = "true != false;", .expected = true },
+        .{ .input = "false != true;", .expected = true },
+        .{ .input = "true == false;", .expected = false },
+        .{ .input = "false == true;", .expected = false },
+        .{ .input = "(1 < 2) == true;", .expected = true },
+        .{ .input = "(1 < 2) == false;", .expected = false },
+        .{ .input = "(1 > 2) == true;", .expected = false },
+        .{ .input = "(1 > 2) == false;", .expected = true },
     };
 
     for (tests) |t| {
