@@ -30,7 +30,34 @@ pub fn eval(node: ast.Node) !object.Object {
                 unreachable;
             },
             .boolean_literal => |bool_lit| .{ .boolean = if (bool_lit.value) boolean.True else boolean.False },
+            .prefix => |prefix_expr| {
+                const right = try eval(prefix_expr.right.node());
+                return evalPrefixExpression(prefix_expr.operator, right);
+            },
         },
+    };
+}
+
+fn evalPrefixExpression(operator: ast.PrefixOperator, right: object.Object) !object.Object {
+    return switch (operator) {
+        .bang => evalBangOperatorExpression(right),
+        .minus => evalMinusPrefixOperatorExpression(right),
+    };
+}
+
+fn evalBangOperatorExpression(right: object.Object) !object.Object {
+    return switch (right) {
+        .boolean => |bool_obj| .{ .boolean = if (bool_obj.value) boolean.False else boolean.True },
+        .integer => |int_obj| .{ .boolean = if (int_obj.value == 0) boolean.True else boolean.False },
+        .null => .{ .boolean = boolean.True },
+    };
+}
+
+fn evalMinusPrefixOperatorExpression(right: object.Object) !object.Object {
+    return switch (right) {
+        .integer => |int_obj| .{ .integer = .{ .value = -int_obj.value } },
+        .boolean => |bool_obj| .{ .integer = .{ .value = if (bool_obj.value) -1 else 0 } },
+        else => unreachable,
     };
 }
 
@@ -60,6 +87,8 @@ test "integer expression" {
     }{
         .{ .input = "5;", .expected = 5 },
         .{ .input = "10;", .expected = 10 },
+        .{ .input = "-5;", .expected = -5 },
+        .{ .input = "-10;", .expected = -10 },
     };
 
     for (tests) |t| {
@@ -75,6 +104,25 @@ test "boolean expression" {
     }{
         .{ .input = "true;", .expected = true },
         .{ .input = "false;", .expected = false },
+    };
+
+    for (tests) |t| {
+        const evaluated = try testEval(t.input);
+        try testBooleanObject(evaluated, t.expected);
+    }
+}
+
+test "bang operators" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: bool,
+    }{
+        .{ .input = "!true;", .expected = false },
+        .{ .input = "!false;", .expected = true },
+        .{ .input = "!5;", .expected = false },
+        .{ .input = "!!true;", .expected = true },
+        .{ .input = "!!false;", .expected = false },
+        .{ .input = "!!5;", .expected = true },
     };
 
     for (tests) |t| {
