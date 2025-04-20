@@ -3,6 +3,7 @@ const testing = std.testing;
 
 const Lexer = @import("../lexer/lexer.zig");
 const object = @import("../object/object.zig");
+const boolean = @import("../object/boolean.zig");
 const ast = @import("../parser/ast.zig");
 const Parser = @import("../parser/parser.zig");
 
@@ -28,6 +29,7 @@ pub fn eval(node: ast.Node) !object.Object {
                 std.debug.print("Unknown expression type: {}\n", .{expr});
                 unreachable;
             },
+            .boolean_literal => |bool_lit| .{ .boolean = if (bool_lit.value) boolean.True else boolean.False },
         },
     };
 }
@@ -47,6 +49,10 @@ fn testIntegerObject(obj: object.Object, expected: i64) !void {
     try testing.expectEqual(expected, obj.integer.value);
 }
 
+fn testBooleanObject(obj: object.Object, expected: bool) !void {
+    try testing.expectEqual(expected, obj.boolean.value);
+}
+
 test "integer expression" {
     const tests = [_]struct {
         input: []const u8,
@@ -59,5 +65,20 @@ test "integer expression" {
     for (tests) |t| {
         const evaluated = try testEval(t.input);
         try testIntegerObject(evaluated, t.expected);
+    }
+}
+
+test "boolean expression" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: bool,
+    }{
+        .{ .input = "true;", .expected = true },
+        .{ .input = "false;", .expected = false },
+    };
+
+    for (tests) |t| {
+        const evaluated = try testEval(t.input);
+        try testBooleanObject(evaluated, t.expected);
     }
 }
