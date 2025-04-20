@@ -12,50 +12,22 @@ arena: std.heap.ArenaAllocator,
 cur_token: Token,
 peek_token: Token,
 errors: std.ArrayList(ParsingError),
-prefix_parse_fns: std.AutoHashMap(Token.Type, *const PrefixParseFn),
-infix_parse_fns: std.AutoHashMap(Token.Type, *const InfixParseFn),
 
 const Self = @This();
 
 pub fn init(allocator: Allocator, lexer: *Lexer) Self {
-    var self = Self{
+    return Self{
         .lexer = lexer,
         .arena = .init(allocator),
         .cur_token = lexer.next(),
         .peek_token = lexer.next(),
         .errors = .init(allocator),
-        .prefix_parse_fns = .init(allocator),
-        .infix_parse_fns = .init(allocator),
     };
-
-    self.registerPrefix(.ident, parseIdentifier) catch unreachable;
-    self.registerPrefix(.int, parseIntegerLiteral) catch unreachable;
-    self.registerPrefix(.minus, parsePrefixExpression) catch unreachable;
-    self.registerPrefix(.bang, parsePrefixExpression) catch unreachable;
-    self.registerPrefix(.true, parseBooleanLiteral) catch unreachable;
-    self.registerPrefix(.false, parseBooleanLiteral) catch unreachable;
-    self.registerPrefix(.lparen, parseGroupedExpression) catch unreachable;
-    self.registerPrefix(.@"if", parseIfExpression) catch unreachable;
-    self.registerPrefix(.function, parseFunctionLiteral) catch unreachable;
-
-    self.registerInfix(.plus, parseInfixExpression) catch unreachable;
-    self.registerInfix(.minus, parseInfixExpression) catch unreachable;
-    self.registerInfix(.asterisk, parseInfixExpression) catch unreachable;
-    self.registerInfix(.slash, parseInfixExpression) catch unreachable;
-    self.registerInfix(.lt, parseInfixExpression) catch unreachable;
-    self.registerInfix(.gt, parseInfixExpression) catch unreachable;
-    self.registerInfix(.eq, parseInfixExpression) catch unreachable;
-    self.registerInfix(.not_eq, parseInfixExpression) catch unreachable;
-    self.registerInfix(.lparen, parseCallExpression) catch unreachable;
-
-    return self;
 }
 
 pub fn deinit(self: *Self) void {
     self.arena.deinit();
     self.errors.deinit();
-    self.prefix_parse_fns.deinit();
-    self.infix_parse_fns.deinit();
 }
 
 pub fn parseProgram(self: *Self) !*ast.Program {
@@ -171,11 +143,11 @@ fn parseBlockStatement(self: *Self) !?ast.BlockStatement {
 }
 
 fn parseExpression(self: *Self, precedence: Precedence) !?ast.Expression {
-    const prefix_fn = self.prefix_parse_fns.get(self.cur_token.token_type) orelse return null;
+    const prefix_fn = getPrefixParseFn(self.cur_token.token_type) orelse return null;
     var left_expr = try prefix_fn(self) orelse return null;
 
     while (!self.peekTokenIs(.semicolon) and precedence.lt(self.peekPrecdence())) {
-        if (self.infix_parse_fns.get(self.peek_token.token_type)) |infix_fn| {
+        if (getInfixParseFn(self.peek_token.token_type)) |infix_fn| {
             self.nextToken();
             left_expr = try infix_fn(self, left_expr) orelse return null;
         } else break;
@@ -485,12 +457,34 @@ const Precedence = enum {
 const PrefixParseFn = fn (self: *Self) anyerror!?ast.Expression;
 const InfixParseFn = fn (self: *Self, left_side: ast.Expression) anyerror!?ast.Expression;
 
-fn registerPrefix(self: *Self, token_type: Token.Type, parse_fn: *const PrefixParseFn) !void {
-    try self.prefix_parse_fns.put(token_type, parse_fn);
+fn getPrefixParseFn(token_type: Token.Type) ?*const PrefixParseFn {
+    return switch (token_type) {
+        .ident => parseIdentifier,
+        .int => parseIntegerLiteral,
+        .minus => parsePrefixExpression,
+        .bang => parsePrefixExpression,
+        .true => parseBooleanLiteral,
+        .false => parseBooleanLiteral,
+        .lparen => parseGroupedExpression,
+        .@"if" => parseIfExpression,
+        .function => parseFunctionLiteral,
+        else => null,
+    };
 }
 
-fn registerInfix(self: *Self, token_type: Token.Type, parse_fn: *const InfixParseFn) !void {
-    try self.infix_parse_fns.put(token_type, parse_fn);
+fn getInfixParseFn(token_type: Token.Type) ?*const InfixParseFn {
+    return switch (token_type) {
+        .plus => parseInfixExpression,
+        .minus => parseInfixExpression,
+        .asterisk => parseInfixExpression,
+        .slash => parseInfixExpression,
+        .lt => parseInfixExpression,
+        .gt => parseInfixExpression,
+        .eq => parseInfixExpression,
+        .not_eq => parseInfixExpression,
+        .lparen => parseCallExpression,
+        else => null,
+    };
 }
 
 test "let statements" {
