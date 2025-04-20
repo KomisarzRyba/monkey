@@ -1,7 +1,7 @@
 const std = @import("std");
 
-const Lexer = @import("../lexer/lexer.zig");
-const Parser = @import("../parser/parser.zig");
+const Lexer = @import("lexer/lexer.zig");
+const Parser = @import("parser/parser.zig");
 
 pub const Repl = struct {
     in: std.io.AnyReader,
