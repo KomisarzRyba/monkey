@@ -94,6 +94,7 @@ pub const Expression = union(enum) {
     boolean_literal: BooleanLiteralExpression,
     @"if": IfExpression,
     function_literal: FunctionLiteralExpression,
+    call: CallExpression,
 
     pub fn toString(self: Expression) []const u8 {
         return switch (self) {
@@ -104,6 +105,7 @@ pub const Expression = union(enum) {
             .boolean_literal => |e| e.toString(),
             .@"if" => |e| e.toString(),
             .function_literal => |e| e.toString(),
+            .call => |e| e.toString(),
         };
     }
 };
@@ -272,6 +274,31 @@ pub const FunctionLiteralExpression = struct {
         func_str.appendSlice(self.body.toString()) catch unreachable;
 
         return func_str.toOwnedSlice() catch unreachable;
+    }
+};
+
+pub const CallExpression = struct {
+    token: Token,
+    function: *Expression,
+    arguments: []Expression,
+
+    pub fn toString(self: CallExpression) []const u8 {
+        var call_str = std.ArrayList(u8).init(std.heap.page_allocator);
+        defer call_str.deinit();
+
+        call_str.appendSlice(self.function.toString()) catch unreachable;
+        call_str.appendSlice("(") catch unreachable;
+
+        for (self.arguments, 0..) |arg, i| {
+            if (i > 0) {
+                call_str.appendSlice(", ") catch unreachable;
+            }
+            call_str.appendSlice(arg.toString()) catch unreachable;
+        }
+
+        call_str.appendSlice(")") catch unreachable;
+
+        return call_str.toOwnedSlice() catch unreachable;
     }
 };
 

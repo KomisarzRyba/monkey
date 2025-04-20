@@ -46,6 +46,7 @@ pub fn init(allocator: Allocator, lexer: *Lexer) Self {
     self.registerInfix(.gt, parseInfixExpression) catch unreachable;
     self.registerInfix(.eq, parseInfixExpression) catch unreachable;
     self.registerInfix(.not_eq, parseInfixExpression) catch unreachable;
+    self.registerInfix(.lparen, parseCallExpression) catch unreachable;
 
     return self;
 }
@@ -104,18 +105,16 @@ fn parseLetStatement(self: *Self) !?ast.LetStatement {
     };
 
     if (!self.expectPeek(.assign)) {
-        // TODO: handle error
         return null;
     }
-    // TODO: for now, just skip to the semicolon
-    while (!self.curTokenIs(.semicolon)) {
-        self.nextToken();
-    }
+    self.nextToken();
+
+    const value = try self.parseExpression(.lowest) orelse return null;
 
     return ast.LetStatement{
         .token = let_token,
         .name = name,
-        .value = undefined, // TODO: parse the value
+        .value = value,
     };
 }
 
@@ -124,14 +123,15 @@ fn parseReturnStatement(self: *Self) !?ast.ReturnStatement {
 
     self.nextToken();
 
-    // TODO: for now, just skip to the semicolon
-    while (!self.curTokenIs(.semicolon)) {
+    const value = try self.parseExpression(.lowest) orelse return null;
+
+    if (self.peekTokenIs(.semicolon)) {
         self.nextToken();
     }
 
     return ast.ReturnStatement{
         .token = return_token,
-        .return_value = undefined, // TODO: parse the return value
+        .return_value = value,
     };
 }
 
@@ -353,6 +353,50 @@ fn parseFunctionParameters(self: *Self) !?[]ast.Identifier {
     return try params.toOwnedSlice();
 }
 
+fn parseCallExpression(self: *Self, left: ast.Expression) !?ast.Expression {
+    const call_token = self.cur_token;
+
+    const function = try self.arena.allocator().create(ast.Expression);
+    function.* = left;
+
+    const args = try self.parseCallArguments() orelse return null;
+
+    return ast.Expression{ .call = ast.CallExpression{
+        .token = call_token,
+        .function = function,
+        .arguments = args,
+    } };
+}
+
+fn parseCallArguments(self: *Self) !?[]ast.Expression {
+    var args = std.ArrayList(ast.Expression).init(self.arena.allocator());
+    errdefer args.deinit();
+
+    if (self.peekTokenIs(.rparen)) {
+        self.nextToken();
+        return try args.toOwnedSlice();
+    }
+
+    self.nextToken();
+
+    const first_arg = try self.parseExpression(.lowest) orelse return null;
+    try args.append(first_arg);
+
+    while (self.peekTokenIs(.comma)) {
+        self.nextToken();
+        self.nextToken();
+
+        const arg = try self.parseExpression(.lowest) orelse return null;
+        try args.append(arg);
+    }
+
+    if (!self.expectPeek(.rparen)) {
+        return null;
+    }
+
+    return try args.toOwnedSlice();
+}
+
 fn parseGroupedExpression(self: *Self) !?ast.Expression {
     self.nextToken();
 
@@ -424,6 +468,7 @@ const Precedence = enum {
             .lt, .gt => .lessGreater,
             .plus, .minus => .sum,
             .asterisk, .slash => .product,
+            .lparen => .call,
             else => .lowest,
         };
     }
@@ -449,38 +494,39 @@ fn registerInfix(self: *Self, token_type: Token.Type, parse_fn: *const InfixPars
 }
 
 test "let statements" {
-    const allocator = testing.allocator;
-    const input =
-        \\let x = 5;
-        \\let y = 10;
-        \\let foobar = 838383;
-    ;
-    var lexer = Lexer.init(input);
-    var p = init(allocator, &lexer);
-
-    const program = try p.parseProgram();
-    defer p.deinit();
-
-    const errors = p.getErrors();
-    if (errors.len > 0) {
-        for (errors) |err| {
-            std.debug.print("parser error: {s}\n", .{err.toString()});
-        }
-    }
-    try testing.expectEqual(3, program.statements.len);
-
-    const expected_idents = [_][]const u8{
-        "x",
-        "y",
-        "foobar",
+    const tests = [_]struct {
+        input: []const u8,
+        expected_identifier: []const u8,
+        expected_value: i64,
+    }{
+        .{ .input = "let x = 5;", .expected_identifier = "x", .expected_value = 5 },
+        .{ .input = "let y = 10;", .expected_identifier = "y", .expected_value = 10 },
+        .{ .input = "let foobar = 838383;", .expected_identifier = "foobar", .expected_value = 838383 },
     };
 
-    for (expected_idents, 0..) |ident, i| {
-        const stmt = program.statements[i];
-        try testing.expectEqualStrings(ident, stmt.let.name.value);
-    }
+    const allocator = testing.allocator;
 
-    std.debug.print("program:\n{s}\n", .{program.toString()});
+    for (tests) |t| {
+        var lexer = Lexer.init(t.input);
+        var p = init(allocator, &lexer);
+
+        const program = try p.parseProgram();
+        defer p.deinit();
+
+        if (p.getErrors().len > 0) {
+            for (p.getErrors()) |err| {
+                std.debug.print("parser error: {s}\n", .{err.toString()});
+            }
+        }
+
+        try testing.expectEqual(1, program.statements.len);
+
+        const let_stmt = program.statements[0].let;
+        try testIdentifier(let_stmt.name, t.expected_identifier);
+        try testLiteralExpression(let_stmt.value, t.expected_value);
+
+        std.debug.print("program:\n{s}\n", .{program.toString()});
+    }
 }
 
 test "return statements" {
@@ -670,6 +716,8 @@ test "operator precedence parsing" {
         .{ .input = "2 / (5 + 5);", .expected = "(2 / (5 + 5))" },
         .{ .input = "-(5 + 5);", .expected = "(-(5 + 5))" },
         .{ .input = "!(true == true);", .expected = "(!(true == true))" },
+        .{ .input = "a + add(b * c) + d;", .expected = "((a + add((b * c))) + d)" },
+        .{ .input = "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))", .expected = "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))" },
     };
 
     const allocator = testing.allocator;
@@ -821,6 +869,33 @@ test "function parameters" {
     }
 }
 
+test "call expression" {
+    const allocator = testing.allocator;
+    const input = "add(1, 2 * 3, 4 + 5);";
+    var lexer = Lexer.init(input);
+    var p = init(allocator, &lexer);
+
+    const program = try p.parseProgram();
+    defer p.deinit();
+
+    if (p.getErrors().len > 0) {
+        for (p.getErrors()) |err| {
+            std.debug.print("parser error: {s}\n", .{err.toString()});
+        }
+    }
+
+    try testing.expectEqual(1, program.statements.len);
+
+    const call_expr = program.statements[0].expression.expression.call;
+    try testIdentifier(call_expr.function.identifier, "add");
+    try testing.expectEqual(3, call_expr.arguments.len);
+    try testLiteralExpression(call_expr.arguments[0], 1);
+    try testInfixExpression(call_expr.arguments[1], 2, ast.InfixOperator.asterisk, 3);
+    try testInfixExpression(call_expr.arguments[2], 4, ast.InfixOperator.plus, 5);
+
+    std.debug.print("program:\n{s}\n", .{program.toString()});
+}
+
 fn testInfixExpression(
     expr: ast.Expression,
     left: anytype,
@@ -837,7 +912,7 @@ fn testLiteralExpression(expr: ast.Expression, expected: anytype) !void {
     const T = comptime @TypeOf(expected);
 
     switch (@typeInfo(T)) {
-        .int => try testIntegerLiteral(expr, expected),
+        .int, .comptime_int => try testIntegerLiteral(expr, expected),
         .pointer => |ptr| {
             if (@typeInfo(ptr.child).array.child != u8) unreachable;
             try testIdentifier(expr.identifier, expected);
