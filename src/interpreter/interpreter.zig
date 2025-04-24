@@ -11,20 +11,12 @@ const Parser = @import("../parser/parser.zig");
 pub fn eval(node: ast.Node) anyerror!object.Object {
     return switch (node) {
         .statement => |stmt| switch (stmt) {
-            .program => |prog| {
-                var result = object.Object{ .null = {} };
-                for (prog.statements) |statement| {
-                    result = try eval(statement.node());
-                }
-                return result;
-            },
+            .program => |prog| try evalProgram(prog),
             .expression => |expr_stmt| try eval(expr_stmt.expression.node()),
-            .block => |block_stmt| {
-                var result = object.Object{ .null = {} };
-                for (block_stmt.statements) |statement| {
-                    result = try eval(statement.node());
-                }
-                return result;
+            .block => |block_stmt| try evalBlockStatement(block_stmt),
+            .@"return" => |return_stmt| {
+                var return_value = try eval(return_stmt.return_value.node());
+                return object.Object{ .@"return" = &return_value };
             },
             else => {
                 std.debug.print("Unknown statement type: {}\n", .{stmt});
@@ -52,6 +44,28 @@ pub fn eval(node: ast.Node) anyerror!object.Object {
     };
 }
 
+fn evalProgram(program: ast.Program) !object.Object {
+    var result = object.Object{ .null = {} };
+    for (program.statements) |statement| {
+        result = try eval(statement.node());
+        if (result == .@"return") {
+            return result;
+        }
+    }
+    return result;
+}
+
+fn evalBlockStatement(block: ast.BlockStatement) !object.Object {
+    var result = object.Object{ .null = {} };
+    for (block.statements) |statement| {
+        result = try eval(statement.node());
+        if (result == .@"return") {
+            return result;
+        }
+    }
+    return result;
+}
+
 fn evalPrefixExpression(operator: ast.PrefixOperator, right: object.Object) !object.Object {
     return switch (operator) {
         .bang => evalBangOperatorExpression(right),
@@ -64,6 +78,7 @@ fn evalBangOperatorExpression(right: object.Object) !object.Object {
         .boolean => |bool_obj| .{ .boolean = if (bool_obj.value) &Boolean.False else &Boolean.True },
         .integer => |int_obj| .{ .boolean = if (int_obj.value == 0) &Boolean.True else &Boolean.False },
         .null => .{ .boolean = &Boolean.True },
+        .@"return" => |return_obj| try evalBangOperatorExpression(return_obj.*),
     };
 }
 
@@ -237,5 +252,23 @@ test "if expressions" {
             },
             else => unreachable,
         }
+    }
+}
+
+test "return statements" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: i64,
+    }{
+        .{ .input = "return 10;", .expected = 10 },
+        .{ .input = "return 10; 9;", .expected = 10 },
+        .{ .input = "return 2 * 5; 9;", .expected = 10 },
+        .{ .input = "9; return 2 * 5; 9;", .expected = 10 },
+        .{ .input = "if (10 > 1) { if (10 > 1) { return 10; } return 1; }", .expected = 10 },
+    };
+
+    for (tests) |t| {
+        const evaluated = try testEval(t.input);
+        try testIntegerObject(evaluated.@"return".*, t.expected);
     }
 }

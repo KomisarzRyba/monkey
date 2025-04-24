@@ -18,6 +18,7 @@ pub fn eq(self: Self, other: Object) bool {
         .integer => |i| self.value == i.value,
         .boolean => false,
         .null => false,
+        .@"return" => |r| self.eq(r.*),
     };
 }
 

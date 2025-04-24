@@ -14,6 +14,7 @@ pub fn eq(self: *const Self, other: Object) bool {
         .integer => false,
         .boolean => |b| self == b,
         .null => false,
+        .@"return" => |r| self.eq(r.*),
     };
 }
 
