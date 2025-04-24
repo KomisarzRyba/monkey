@@ -21,4 +21,12 @@ pub const Object = union(enum) {
             .null => self == .null and other == .null,
         };
     }
+
+    pub fn truthy(self: Object) bool {
+        return switch (self) {
+            .integer => |i| i.truthy(),
+            .boolean => |b| b.truthy(),
+            .null => false,
+        };
+    }
 };

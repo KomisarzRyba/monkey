@@ -2,13 +2,13 @@ const std = @import("std");
 const testing = std.testing;
 
 const Lexer = @import("../lexer/lexer.zig");
-const object = @import("../object/object.zig");
 const Boolean = @import("../object/boolean.zig");
 const Integer = @import("../object/integer.zig");
+const object = @import("../object/object.zig");
 const ast = @import("../parser/ast.zig");
 const Parser = @import("../parser/parser.zig");
 
-pub fn eval(node: ast.Node) !object.Object {
+pub fn eval(node: ast.Node) anyerror!object.Object {
     return switch (node) {
         .statement => |stmt| switch (stmt) {
             .program => |prog| {
@@ -19,6 +19,13 @@ pub fn eval(node: ast.Node) !object.Object {
                 return result;
             },
             .expression => |expr_stmt| try eval(expr_stmt.expression.node()),
+            .block => |block_stmt| {
+                var result = object.Object{ .null = {} };
+                for (block_stmt.statements) |statement| {
+                    result = try eval(statement.node());
+                }
+                return result;
+            },
             else => {
                 std.debug.print("Unknown statement type: {}\n", .{stmt});
                 unreachable;
@@ -36,6 +43,7 @@ pub fn eval(node: ast.Node) !object.Object {
                 const right = try eval(infix_expr.right.node());
                 return evalInfixExpression(infix_expr.operator, left, right);
             },
+            .@"if" => |if_expr| try evalIfExpression(if_expr),
             else => {
                 std.debug.print("Unknown expression type: {}\n", .{expr});
                 unreachable;
@@ -88,6 +96,17 @@ fn evalIntegerInfixExpression(operator: ast.InfixOperator, left: Integer, right:
         .eq => .{ .boolean = if (left.value == right.value) &Boolean.True else &Boolean.False },
         .not_eq => .{ .boolean = if (left.value != right.value) &Boolean.True else &Boolean.False },
     };
+}
+
+fn evalIfExpression(if_expr: ast.IfExpression) !object.Object {
+    const condition = try eval(if_expr.condition.*.node());
+    if (condition.truthy()) {
+        return try eval(if_expr.consequence.*.node());
+    } else if (if_expr.alternative) |alt| {
+        return try eval(alt.*.node());
+    } else {
+        return object.Object{ .null = {} };
+    }
 }
 
 fn testEval(input: []const u8) !object.Object {
@@ -186,5 +205,37 @@ test "bang operators" {
     for (tests) |t| {
         const evaluated = try testEval(t.input);
         try testBooleanObject(evaluated, t.expected);
+    }
+}
+
+test "if expressions" {
+    const Result = union(enum) {
+        integer: i64,
+        null,
+    };
+    const tests = [_]struct {
+        input: []const u8,
+        expected: Result,
+    }{
+        .{ .input = "if (true) { 10 };", .expected = .{ .integer = 10 } },
+        .{ .input = "if (false) { 10 };", .expected = .{ .null = {} } },
+        .{ .input = "if (1) { 10 };", .expected = .{ .integer = 10 } },
+        .{ .input = "if (1 < 2) { 10 };", .expected = .{ .integer = 10 } },
+        .{ .input = "if (1 > 2) { 10 };", .expected = .{ .null = {} } },
+        .{ .input = "if (1 < 2) { 10 } else { 20 };", .expected = .{ .integer = 10 } },
+        .{ .input = "if (1 > 2) { 10 } else { 20 };", .expected = .{ .integer = 20 } },
+    };
+
+    for (tests) |t| {
+        const evaluated = try testEval(t.input);
+        switch (evaluated) {
+            .integer => {
+                try testIntegerObject(evaluated, t.expected.integer);
+            },
+            .null => {
+                try testing.expectEqual(t.expected.null, evaluated.null);
+            },
+            else => unreachable,
+        }
     }
 }

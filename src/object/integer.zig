@@ -20,3 +20,7 @@ pub fn eq(self: Self, other: Object) bool {
         .null => false,
     };
 }
+
+pub fn truthy(self: Self) bool {
+    return self.value != 0;
+}

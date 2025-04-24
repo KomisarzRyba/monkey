@@ -17,5 +17,9 @@ pub fn eq(self: *const Self, other: Object) bool {
     };
 }
 
+pub fn truthy(self: *const Self) bool {
+    return self.value;
+}
+
 pub const True = Self{ .value = true };
 pub const False = Self{ .value = false };
