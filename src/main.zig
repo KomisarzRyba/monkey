@@ -1,13 +1,13 @@
 const std = @import("std");
 
-const repl = @import("repl.zig");
+const Repl = @import("repl.zig");
 
 pub fn main() !void {
     const stdin = std.io.getStdIn().reader().any();
     const stdout = std.io.getStdOut().writer().any();
 
-    var r = repl.Repl.init(stdin, stdout);
-    r.start_msg =
+    var r = Repl.init(stdin, stdout);
+    r.setStartMsg(
         \\
         \\     w  c(..)o   (
         \\      \__(-)    __)
@@ -17,6 +17,6 @@ pub fn main() !void {
         \\          | \
         \\         m  m
         \\
-    ;
+    );
     try r.run();
 }

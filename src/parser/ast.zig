@@ -90,6 +90,10 @@ pub const BlockStatement = struct {
 
         return block_str.toOwnedSlice() catch unreachable;
     }
+
+    pub fn node(self: BlockStatement) Node {
+        return Node{ .statement = .{ .block = self } };
+    }
 };
 
 pub const Expression = union(enum) {
