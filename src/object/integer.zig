@@ -19,6 +19,7 @@ pub fn eq(self: Self, other: Object) bool {
         .boolean => false,
         .null => false,
         .@"return" => |r| self.eq(r.*),
+        else => unreachable,
     };
 }
 

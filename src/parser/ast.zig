@@ -201,7 +201,9 @@ pub const InfixOperator = enum {
     asterisk,
     slash,
     lt,
+    lte,
     gt,
+    gte,
     eq,
     not_eq,
 
@@ -212,7 +214,9 @@ pub const InfixOperator = enum {
             .asterisk => "*",
             .slash => "/",
             .lt => "<",
+            .lte => "<=",
             .gt => ">",
+            .gte => ">=",
             .eq => "==",
             .not_eq => "!=",
         };
@@ -224,10 +228,12 @@ pub const InfixOperator = enum {
             .minus => .minus,
             .asterisk => .asterisk,
             .slash => .slash,
-            .lt => .lt,
-            .gt => .gt,
             .eq => .eq,
             .not_eq => .not_eq,
+            .lt => .lt,
+            .lte => .lte,
+            .gte => .gte,
+            .gt => .gt,
             else => unreachable,
         };
     }

@@ -437,7 +437,7 @@ const Precedence = enum {
     fn from_token_type(token_type: Token.Type) Precedence {
         return switch (token_type) {
             .eq, .not_eq => .equals,
-            .lt, .gt => .lessGreater,
+            .lt, .lte, .gt, .gte => .lessGreater,
             .plus, .minus => .sum,
             .asterisk, .slash => .product,
             .lparen => .call,
@@ -479,7 +479,9 @@ fn getInfixParseFn(token_type: Token.Type) ?*const InfixParseFn {
         .asterisk => parseInfixExpression,
         .slash => parseInfixExpression,
         .lt => parseInfixExpression,
+        .lte => parseInfixExpression,
         .gt => parseInfixExpression,
+        .gte => parseInfixExpression,
         .eq => parseInfixExpression,
         .not_eq => parseInfixExpression,
         .lparen => parseCallExpression,

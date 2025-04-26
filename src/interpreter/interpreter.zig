@@ -3,6 +3,7 @@ const testing = std.testing;
 
 const Lexer = @import("../lexer/lexer.zig");
 const Boolean = @import("../object/boolean.zig");
+const Error = @import("../object/error.zig");
 const Integer = @import("../object/integer.zig");
 const object = @import("../object/object.zig");
 const ast = @import("../parser/ast.zig");
@@ -16,6 +17,7 @@ pub fn eval(node: ast.Node) anyerror!object.Object {
             .block => |block_stmt| try evalBlockStatement(block_stmt),
             .@"return" => |return_stmt| {
                 var return_value = try eval(return_stmt.return_value.node());
+                if (return_value == .@"error") return return_value;
                 return object.Object{ .@"return" = &return_value };
             },
             else => {
@@ -28,16 +30,18 @@ pub fn eval(node: ast.Node) anyerror!object.Object {
             .boolean_literal => |bool_lit| .{ .boolean = if (bool_lit.value) &Boolean.True else &Boolean.False },
             .prefix => |prefix_expr| {
                 const right = try eval(prefix_expr.right.node());
-                return evalPrefixExpression(prefix_expr.operator, right);
+                if (right == .@"error") return right;
+                return try evalPrefixExpression(prefix_expr.operator, right);
             },
             .infix => |infix_expr| {
                 const left = try eval(infix_expr.left.node());
+                if (left == .@"error") return left;
                 const right = try eval(infix_expr.right.node());
-                return evalInfixExpression(infix_expr.operator, left, right);
+                if (right == .@"error") return right;
+                return try evalInfixExpression(infix_expr.operator, left, right);
             },
             .@"if" => |if_expr| try evalIfExpression(if_expr),
             else => {
-                std.debug.print("Unknown expression type: {}\n", .{expr});
                 unreachable;
             },
         },
@@ -48,7 +52,7 @@ fn evalProgram(program: ast.Program) !object.Object {
     var result = object.Object{ .null = {} };
     for (program.statements) |statement| {
         result = try eval(statement.node());
-        if (result == .@"return") {
+        if (result == .@"return" or result == .@"error") {
             return result;
         }
     }
@@ -59,7 +63,7 @@ fn evalBlockStatement(block: ast.BlockStatement) !object.Object {
     var result = object.Object{ .null = {} };
     for (block.statements) |statement| {
         result = try eval(statement.node());
-        if (result == .@"return") {
+        if (result == .@"return" or result == .@"error") {
             return result;
         }
     }
@@ -79,25 +83,27 @@ fn evalBangOperatorExpression(right: object.Object) !object.Object {
         .integer => |int_obj| .{ .boolean = if (int_obj.value == 0) &Boolean.True else &Boolean.False },
         .null => .{ .boolean = &Boolean.True },
         .@"return" => |return_obj| try evalBangOperatorExpression(return_obj.*),
+        else => unreachable,
     };
 }
 
 fn evalMinusPrefixOperatorExpression(right: object.Object) !object.Object {
     return switch (right) {
         .integer => |int_obj| .{ .integer = .{ .value = -int_obj.value } },
-        .boolean => |bool_obj| .{ .integer = .{ .value = if (bool_obj.value) -1 else 0 } },
-        else => unreachable,
+        else => .{ .@"error" = Error.new("unknown operator: -{s}", .{@tagName(right)}) },
     };
 }
 
 fn evalInfixExpression(operator: ast.InfixOperator, left: object.Object, right: object.Object) !object.Object {
     if (left == .integer and right == .integer) {
-        return evalIntegerInfixExpression(operator, left.integer, right.integer);
+        return try evalIntegerInfixExpression(operator, left.integer, right.integer);
     } else if (operator == .eq) {
         return .{ .boolean = if (left.eq(right)) &Boolean.True else &Boolean.False };
     } else if (operator == .not_eq) {
         return .{ .boolean = if (!left.eq(right)) &Boolean.True else &Boolean.False };
-    } else unreachable;
+    } else {
+        return object.Object{ .@"error" = Error.new("unknown operator: {s} {s} {s}", .{ @tagName(left), operator.toString(), @tagName(right) }) };
+    }
 }
 
 fn evalIntegerInfixExpression(operator: ast.InfixOperator, left: Integer, right: Integer) !object.Object {
@@ -107,7 +113,9 @@ fn evalIntegerInfixExpression(operator: ast.InfixOperator, left: Integer, right:
         .asterisk => .{ .integer = .{ .value = left.value * right.value } },
         .slash => .{ .integer = .{ .value = @divFloor(left.value, right.value) } },
         .lt => .{ .boolean = if (left.value < right.value) &Boolean.True else &Boolean.False },
+        .lte => .{ .boolean = if (left.value <= right.value) &Boolean.True else &Boolean.False },
         .gt => .{ .boolean = if (left.value > right.value) &Boolean.True else &Boolean.False },
+        .gte => .{ .boolean = if (left.value >= right.value) &Boolean.True else &Boolean.False },
         .eq => .{ .boolean = if (left.value == right.value) &Boolean.True else &Boolean.False },
         .not_eq => .{ .boolean = if (left.value != right.value) &Boolean.True else &Boolean.False },
     };
@@ -115,6 +123,7 @@ fn evalIntegerInfixExpression(operator: ast.InfixOperator, left: Integer, right:
 
 fn evalIfExpression(if_expr: ast.IfExpression) !object.Object {
     const condition = try eval(if_expr.condition.*.node());
+    if (condition == .@"error") return condition;
     if (condition.truthy()) {
         return try eval(if_expr.consequence.*.node());
     } else if (if_expr.alternative) |alt| {
@@ -270,5 +279,26 @@ test "return statements" {
     for (tests) |t| {
         const evaluated = try testEval(t.input);
         try testIntegerObject(evaluated.@"return".*, t.expected);
+    }
+}
+
+test "error handling" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: []const u8,
+    }{
+        .{ .input = "5 > true;", .expected = "unknown operator: integer > boolean" },
+        .{ .input = "5 >= true; 5;", .expected = "unknown operator: integer >= boolean" },
+        .{ .input = "-true;", .expected = "unknown operator: -boolean" },
+        .{ .input = "true + false;", .expected = "unknown operator: boolean + boolean" },
+        .{ .input = "5; true + false; 5;", .expected = "unknown operator: boolean + boolean" },
+        .{ .input = "if (10 > 1) { true + false; }", .expected = "unknown operator: boolean + boolean" },
+        .{ .input = "if (10 > 1) { if (10 > 1) { return true + false; } return 1; }", .expected = "unknown operator: boolean + boolean" },
+    };
+
+    for (tests) |t| {
+        const evaluated = try testEval(t.input);
+        std.debug.print("evaluated: {s}\n", .{evaluated.inspect()});
+        try testing.expectEqualStrings(t.expected, evaluated.@"error".message);
     }
 }

@@ -1,27 +1,33 @@
-const Integer = @import("integer.zig");
+const std = @import("std");
+
 const Boolean = @import("boolean.zig");
+const Error = @import("error.zig");
+const Integer = @import("integer.zig");
 
 pub const Object = union(enum) {
     integer: Integer,
     boolean: *const Boolean,
     null,
     @"return": *Object,
+    @"error": Error,
 
-    pub fn inspect(self: Object) []const u8 {
+    const Self = @This();
+
+    pub fn inspect(self: Self) []const u8 {
         return switch (self) {
             .integer => |i| i.inspect(),
             .boolean => |b| b.inspect(),
             .null => "null",
             .@"return" => |r| r.*.inspect(),
+            .@"error" => |e| e.inspect(),
         };
     }
 
-    pub fn eq(self: Object, other: Object) bool {
+    pub fn eq(self: Self, other: Self) bool {
         return switch (self) {
-            .integer => |i| i.eq(other),
-            .boolean => |b| b.eq(other),
-            .null => self == .null and other == .null,
-            .@"return" => |r| r.*.eq(other),
+            .null => .null == std.meta.activeTag(other),
+            .@"error" => unreachable,
+            inline else => |value, tag| tag == std.meta.activeTag(other) and value.eq(other),
         };
     }
 
@@ -31,6 +37,7 @@ pub const Object = union(enum) {
             .boolean => |b| b.truthy(),
             .null => false,
             .@"return" => |r| r.*.truthy(),
+            else => unreachable,
         };
     }
 };

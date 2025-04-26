@@ -49,8 +49,20 @@ pub fn next(self: *Self) Token {
         },
         '*' => .asterisk,
         '/' => .slash,
-        '<' => .lt,
-        '>' => .gt,
+        '<' => peek: {
+            if (self.peekChar() == '=') {
+                self.readChar();
+                break :peek .lte;
+            }
+            break :peek .lt;
+        },
+        '>' => peek: {
+            if (self.peekChar() == '=') {
+                self.readChar();
+                break :peek .gte;
+            }
+            break :peek .gt;
+        },
 
         ',' => .comma,
         ';' => .semicolon,
