@@ -1,5 +1,5 @@
 const std = @import("std");
-const object = @import("../object/object.zig");
+const object = @import("object/object.zig");
 
 store: std.hash_map.StringHashMap(object.Object),
 

@@ -2,10 +2,10 @@ const std = @import("std");
 const testing = std.testing;
 
 const Lexer = @import("../lexer/lexer.zig");
-const Boolean = @import("../object/boolean.zig");
-const Error = @import("../object/error.zig");
-const Integer = @import("../object/integer.zig");
-const object = @import("../object/object.zig");
+const Boolean = @import("object/boolean.zig");
+const Error = @import("object/error.zig");
+const Integer = @import("object/integer.zig");
+const object = @import("object/object.zig");
 const ast = @import("../parser/ast.zig");
 const Parser = @import("../parser/parser.zig");
 const Environment = @import("environment.zig");
