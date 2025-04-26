@@ -8,39 +8,45 @@ const Integer = @import("../object/integer.zig");
 const object = @import("../object/object.zig");
 const ast = @import("../parser/ast.zig");
 const Parser = @import("../parser/parser.zig");
+const Environment = @import("environment.zig");
 
-pub fn eval(node: ast.Node) anyerror!object.Object {
+pub fn eval(node: ast.Node, env: *Environment) anyerror!object.Object {
     return switch (node) {
         .statement => |stmt| switch (stmt) {
-            .program => |prog| try evalProgram(prog),
-            .expression => |expr_stmt| try eval(expr_stmt.expression.node()),
-            .block => |block_stmt| try evalBlockStatement(block_stmt),
+            .program => |prog| try evalProgram(prog, env),
+            .expression => |expr_stmt| try eval(expr_stmt.expression.node(), env),
+            .block => |block_stmt| try evalBlockStatement(block_stmt, env),
             .@"return" => |return_stmt| {
-                var return_value = try eval(return_stmt.return_value.node());
+                var return_value = try eval(return_stmt.return_value.node(), env);
                 if (return_value == .@"error") return return_value;
                 return object.Object{ .@"return" = &return_value };
             },
-            else => {
-                std.debug.print("Unknown statement type: {}\n", .{stmt});
-                unreachable;
+            .let => |let_stmt| {
+                const value = try eval(let_stmt.value.node(), env);
+                if (value == .@"error") return value;
+                try env.set(let_stmt.name.value, value);
+                return value;
             },
         },
         .expression => |expr| switch (expr) {
             .integer_literal => |int_lit| .{ .integer = .{ .value = int_lit.value } },
             .boolean_literal => |bool_lit| .{ .boolean = if (bool_lit.value) &Boolean.True else &Boolean.False },
             .prefix => |prefix_expr| {
-                const right = try eval(prefix_expr.right.node());
+                const right = try eval(prefix_expr.right.node(), env);
                 if (right == .@"error") return right;
                 return try evalPrefixExpression(prefix_expr.operator, right);
             },
             .infix => |infix_expr| {
-                const left = try eval(infix_expr.left.node());
+                const left = try eval(infix_expr.left.node(), env);
                 if (left == .@"error") return left;
-                const right = try eval(infix_expr.right.node());
+                const right = try eval(infix_expr.right.node(), env);
                 if (right == .@"error") return right;
                 return try evalInfixExpression(infix_expr.operator, left, right);
             },
-            .@"if" => |if_expr| try evalIfExpression(if_expr),
+            .@"if" => |if_expr| try evalIfExpression(if_expr, env),
+            .identifier => |ident| {
+                return evalIdentifier(ident, env);
+            },
             else => {
                 unreachable;
             },
@@ -48,10 +54,10 @@ pub fn eval(node: ast.Node) anyerror!object.Object {
     };
 }
 
-fn evalProgram(program: ast.Program) !object.Object {
+fn evalProgram(program: ast.Program, env: *Environment) !object.Object {
     var result = object.Object{ .null = {} };
     for (program.statements) |statement| {
-        result = try eval(statement.node());
+        result = try eval(statement.node(), env);
         if (result == .@"return" or result == .@"error") {
             return result;
         }
@@ -59,10 +65,10 @@ fn evalProgram(program: ast.Program) !object.Object {
     return result;
 }
 
-fn evalBlockStatement(block: ast.BlockStatement) !object.Object {
+fn evalBlockStatement(block: ast.BlockStatement, env: *Environment) !object.Object {
     var result = object.Object{ .null = {} };
     for (block.statements) |statement| {
-        result = try eval(statement.node());
+        result = try eval(statement.node(), env);
         if (result == .@"return" or result == .@"error") {
             return result;
         }
@@ -121,16 +127,24 @@ fn evalIntegerInfixExpression(operator: ast.InfixOperator, left: Integer, right:
     };
 }
 
-fn evalIfExpression(if_expr: ast.IfExpression) !object.Object {
-    const condition = try eval(if_expr.condition.*.node());
+fn evalIfExpression(if_expr: ast.IfExpression, env: *Environment) !object.Object {
+    const condition = try eval(if_expr.condition.*.node(), env);
     if (condition == .@"error") return condition;
     if (condition.truthy()) {
-        return try eval(if_expr.consequence.*.node());
+        return try eval(if_expr.consequence.*.node(), env);
     } else if (if_expr.alternative) |alt| {
-        return try eval(alt.*.node());
+        return try eval(alt.*.node(), env);
     } else {
         return object.Object{ .null = {} };
     }
+}
+
+fn evalIdentifier(ident: ast.Identifier, env: *Environment) !object.Object {
+    const value = env.get(ident.value);
+    if (value) |v| {
+        return v;
+    }
+    return .{ .@"error" = Error.new("identifier not found: {s}", .{ident.value}) };
 }
 
 fn testEval(input: []const u8) !object.Object {
@@ -139,9 +153,12 @@ fn testEval(input: []const u8) !object.Object {
     var parser = Parser.init(allocator, &lexer);
     defer parser.deinit();
 
+    var env = Environment.init(allocator);
+    defer env.deinit();
+
     const program = try parser.parseProgram();
 
-    return try eval(program.*.node());
+    return try eval(program.*.node(), &env);
 }
 
 fn testIntegerObject(obj: object.Object, expected: i64) !void {
@@ -294,11 +311,29 @@ test "error handling" {
         .{ .input = "5; true + false; 5;", .expected = "unknown operator: boolean + boolean" },
         .{ .input = "if (10 > 1) { true + false; }", .expected = "unknown operator: boolean + boolean" },
         .{ .input = "if (10 > 1) { if (10 > 1) { return true + false; } return 1; }", .expected = "unknown operator: boolean + boolean" },
+        .{ .input = "foobar;", .expected = "identifier not found: foobar" },
     };
 
     for (tests) |t| {
         const evaluated = try testEval(t.input);
         std.debug.print("evaluated: {s}\n", .{evaluated.inspect()});
         try testing.expectEqualStrings(t.expected, evaluated.@"error".message);
+    }
+}
+
+test "let statements" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: i64,
+    }{
+        .{ .input = "let x = 5; x;", .expected = 5 },
+        .{ .input = "let x = 5 * 5; x;", .expected = 25 },
+        .{ .input = "let x = 5; let y = x + 10; y;", .expected = 15 },
+        .{ .input = "let x = 5; let y = x + 10; let z = y + 10; z;", .expected = 25 },
+    };
+
+    for (tests) |t| {
+        const evaluated = try testEval(t.input);
+        try testIntegerObject(evaluated, t.expected);
     }
 }
