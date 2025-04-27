@@ -45,7 +45,7 @@ pub fn eval(node: ast.Node, env: *Environment) anyerror!object.Object {
             },
             .@"if" => |if_expr| try evalIfExpression(if_expr, env),
             .identifier => |ident| {
-                return evalIdentifier(ident, env);
+                return try evalIdentifier(ident, env);
             },
             else => {
                 unreachable;

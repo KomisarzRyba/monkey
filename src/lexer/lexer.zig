@@ -111,6 +111,8 @@ fn hasNextChar(self: *Self) bool {
 
 fn readChar(self: *Self) void {
     if (!self.hasNextChar()) {
+        self.pos = self.read_pos;
+        self.read_pos += 1;
         self.ch = 0;
         return;
     }

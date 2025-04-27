@@ -1,7 +1,7 @@
 const std = @import("std");
 const object = @import("object/object.zig");
 
-store: std.hash_map.StringHashMap(object.Object),
+store: std.StringHashMap(object.Object),
 
 const Self = @This();
 

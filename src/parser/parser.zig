@@ -83,6 +83,10 @@ fn parseLetStatement(self: *Self) !?ast.LetStatement {
 
     const value = try self.parseExpression(.lowest) orelse return null;
 
+    if (self.peekTokenIs(.semicolon)) {
+        self.nextToken();
+    }
+
     return ast.LetStatement{
         .token = let_token,
         .name = name,
@@ -495,9 +499,9 @@ test "let statements" {
         expected_identifier: []const u8,
         expected_value: i64,
     }{
-        .{ .input = "let x = 5;", .expected_identifier = "x", .expected_value = 5 },
-        .{ .input = "let y = 10;", .expected_identifier = "y", .expected_value = 10 },
-        .{ .input = "let foobar = 838383;", .expected_identifier = "foobar", .expected_value = 838383 },
+        .{ .input = "let x = 5", .expected_identifier = "x", .expected_value = 5 },
+        .{ .input = "let y = 10", .expected_identifier = "y", .expected_value = 10 },
+        .{ .input = "let foobar = 838383", .expected_identifier = "foobar", .expected_value = 838383 },
     };
 
     const allocator = testing.allocator;
@@ -528,9 +532,9 @@ test "let statements" {
 test "return statements" {
     const allocator = testing.allocator;
     const input =
-        \\return 5;
-        \\return 10;
-        \\return 993322;
+        \\return 5
+        \\return 10
+        \\return 993322
     ;
     var lexer = Lexer.init(input);
     var p = init(allocator, &lexer);

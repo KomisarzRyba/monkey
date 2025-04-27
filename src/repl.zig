@@ -34,25 +34,29 @@ pub fn run(self: Self) !void {
 
     const allocator = std.heap.page_allocator;
 
+    var env = Environment.init(allocator);
+    defer env.deinit();
+
     while (true) {
         try self.out.print("{s}", .{self.prompt});
 
-        var line_buf = try std.BoundedArray(u8, 1024).init(0);
+        var line_buf = std.ArrayList(u8).init(allocator);
 
-        self.in.streamUntilDelimiter(line_buf.writer(), '\n', 1024) catch |err| {
+        self.in.streamUntilDelimiter(line_buf.writer(), '\n', null) catch |err| {
             if (err == std.io.AnyReader.Error.EndOfStream) {
                 return;
             }
             return err;
         };
 
-        var lexer = Lexer.init(&line_buf.buffer);
+        const input = try line_buf.toOwnedSlice();
+
+        var lexer = Lexer.init(input);
         var parser = Parser.init(allocator, &lexer);
         defer parser.deinit();
 
         const program = try parser.parseProgram();
 
-        var env = Environment.init(allocator);
         const evaluated = try interpreter.eval(program.*.node(), &env);
         try self.out.print("{s}\n", .{evaluated.inspect()});
 
