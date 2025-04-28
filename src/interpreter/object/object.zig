@@ -3,6 +3,7 @@ const std = @import("std");
 const Boolean = @import("boolean.zig");
 const Error = @import("error.zig");
 const Integer = @import("integer.zig");
+const Function = @import("function.zig");
 
 pub const Object = union(enum) {
     integer: Integer,
@@ -10,6 +11,7 @@ pub const Object = union(enum) {
     null,
     @"return": *Object,
     @"error": Error,
+    function: Function,
 
     const Self = @This();
 
@@ -20,6 +22,7 @@ pub const Object = union(enum) {
             .null => "null",
             .@"return" => |r| r.*.inspect(),
             .@"error" => |e| e.inspect(),
+            .function => |f| f.inspect(),
         };
     }
 
@@ -27,6 +30,7 @@ pub const Object = union(enum) {
         return switch (self) {
             .null => .null == std.meta.activeTag(other),
             .@"error" => unreachable,
+            .function => unreachable,
             inline else => |value, tag| tag == std.meta.activeTag(other) and value.eq(other),
         };
     }

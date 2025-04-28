@@ -34,7 +34,10 @@ pub fn run(self: Self) !void {
 
     const allocator = std.heap.page_allocator;
 
-    var env = Environment.init(allocator);
+    var closure_arena = std.heap.ArenaAllocator.init(allocator);
+    defer closure_arena.deinit();
+
+    var env = Environment.init(&closure_arena);
     defer env.deinit();
 
     while (true) {
@@ -51,9 +54,10 @@ pub fn run(self: Self) !void {
 
         const input = try line_buf.toOwnedSlice();
 
+        var ast_arena = std.heap.ArenaAllocator.init(allocator);
+
         var lexer = Lexer.init(input);
-        var parser = Parser.init(allocator, &lexer);
-        defer parser.deinit();
+        var parser = Parser.init(&ast_arena, &lexer);
 
         const program = try parser.parseProgram();
 
@@ -63,5 +67,8 @@ pub fn run(self: Self) !void {
         for (parser.getErrors()) |err| {
             try self.out.print("| Error: {s}\n", .{err.toString()});
         }
+
+        parser.deinit();
+        ast_arena.deinit();
     }
 }

@@ -8,25 +8,24 @@ const ast = @import("ast.zig");
 const ParsingError = @import("errors.zig");
 
 lexer: *Lexer,
-arena: std.heap.ArenaAllocator,
+arena: *std.heap.ArenaAllocator,
 cur_token: Token,
 peek_token: Token,
 errors: std.ArrayList(ParsingError),
 
 const Self = @This();
 
-pub fn init(allocator: Allocator, lexer: *Lexer) Self {
+pub fn init(arena: *std.heap.ArenaAllocator, lexer: *Lexer) Self {
     return Self{
         .lexer = lexer,
-        .arena = .init(allocator),
+        .arena = arena,
         .cur_token = lexer.next(),
         .peek_token = lexer.next(),
-        .errors = .init(allocator),
+        .errors = .init(arena.allocator()),
     };
 }
 
 pub fn deinit(self: *Self) void {
-    self.arena.deinit();
     self.errors.deinit();
 }
 
@@ -505,10 +504,12 @@ test "let statements" {
     };
 
     const allocator = testing.allocator;
+    var ast_arena = std.heap.ArenaAllocator.init(allocator);
+    defer ast_arena.deinit();
 
     for (tests) |t| {
         var lexer = Lexer.init(t.input);
-        var p = init(allocator, &lexer);
+        var p = init(&ast_arena, &lexer);
 
         const program = try p.parseProgram();
         defer p.deinit();
@@ -531,13 +532,16 @@ test "let statements" {
 
 test "return statements" {
     const allocator = testing.allocator;
+    var ast_arena = std.heap.ArenaAllocator.init(allocator);
+    defer ast_arena.deinit();
+
     const input =
         \\return 5
         \\return 10
         \\return 993322
     ;
     var lexer = Lexer.init(input);
-    var p = init(allocator, &lexer);
+    var p = init(&ast_arena, &lexer);
 
     const program = try p.parseProgram();
     defer p.deinit();
@@ -549,9 +553,12 @@ test "return statements" {
 
 test "identifier expression" {
     const allocator = testing.allocator;
+    var ast_arena = std.heap.ArenaAllocator.init(allocator);
+    defer ast_arena.deinit();
+
     const input = "foobar;";
     var lexer = Lexer.init(input);
-    var p = init(allocator, &lexer);
+    var p = init(&ast_arena, &lexer);
 
     const program = try p.parseProgram();
     defer p.deinit();
@@ -571,9 +578,12 @@ test "identifier expression" {
 
 test "integer literal expression" {
     const allocator = testing.allocator;
+    var ast_arena = std.heap.ArenaAllocator.init(allocator);
+    defer ast_arena.deinit();
+
     const input = "5;";
     var lexer = Lexer.init(input);
-    var p = init(allocator, &lexer);
+    var p = init(&ast_arena, &lexer);
 
     const program = try p.parseProgram();
     defer p.deinit();
@@ -603,10 +613,12 @@ test "prefix expressions" {
     };
 
     const allocator = testing.allocator;
+    var ast_arena = std.heap.ArenaAllocator.init(allocator);
+    defer ast_arena.deinit();
 
     for (tests) |t| {
         var lexer = Lexer.init(t.input);
-        var p = init(allocator, &lexer);
+        var p = init(&ast_arena, &lexer);
 
         const program = try p.parseProgram();
         defer p.deinit();
@@ -645,10 +657,12 @@ test "infix expressions" {
     };
 
     const allocator = testing.allocator;
+    var ast_arena = std.heap.ArenaAllocator.init(allocator);
+    defer ast_arena.deinit();
 
     for (tests) |t| {
         var lexer = Lexer.init(t.input);
-        var p = init(allocator, &lexer);
+        var p = init(&ast_arena, &lexer);
 
         const program = try p.parseProgram();
         defer p.deinit();
@@ -670,9 +684,12 @@ test "infix expressions" {
 
 test "boolean literal expression" {
     const allocator = testing.allocator;
+    var ast_arena = std.heap.ArenaAllocator.init(allocator);
+    defer ast_arena.deinit();
+
     const input = "true; false;";
     var lexer = Lexer.init(input);
-    var p = init(allocator, &lexer);
+    var p = init(&ast_arena, &lexer);
 
     const program = try p.parseProgram();
     defer p.deinit();
@@ -721,9 +738,12 @@ test "operator precedence parsing" {
     };
 
     const allocator = testing.allocator;
+    var ast_arena = std.heap.ArenaAllocator.init(allocator);
+    defer ast_arena.deinit();
+
     for (tests) |t| {
         var lexer = Lexer.init(t.input);
-        var p = init(allocator, &lexer);
+        var p = init(&ast_arena, &lexer);
 
         const program = try p.parseProgram();
         defer p.deinit();
@@ -743,9 +763,12 @@ test "operator precedence parsing" {
 
 test "if expression" {
     const allocator = testing.allocator;
+    var ast_arena = std.heap.ArenaAllocator.init(allocator);
+    defer ast_arena.deinit();
+
     const input = "if (x < y) { x }";
     var lexer = Lexer.init(input);
-    var p = init(allocator, &lexer);
+    var p = init(&ast_arena, &lexer);
 
     const program = try p.parseProgram();
     defer p.deinit();
@@ -772,9 +795,12 @@ test "if expression" {
 
 test "if else expression" {
     const allocator = testing.allocator;
+    var ast_arena = std.heap.ArenaAllocator.init(allocator);
+    defer ast_arena.deinit();
+
     const input = "if (x < y) { x } else { y }";
     var lexer = Lexer.init(input);
-    var p = init(allocator, &lexer);
+    var p = init(&ast_arena, &lexer);
 
     const program = try p.parseProgram();
     defer p.deinit();
@@ -804,9 +830,12 @@ test "if else expression" {
 
 test "function literal expression" {
     const allocator = testing.allocator;
+    var ast_arena = std.heap.ArenaAllocator.init(allocator);
+    defer ast_arena.deinit();
+
     const input = "fn(x, y) { x + y; }";
     var lexer = Lexer.init(input);
-    var p = init(allocator, &lexer);
+    var p = init(&ast_arena, &lexer);
 
     const program = try p.parseProgram();
     defer p.deinit();
@@ -842,10 +871,12 @@ test "function parameters" {
     };
 
     const allocator = testing.allocator;
+    var ast_arena = std.heap.ArenaAllocator.init(allocator);
+    defer ast_arena.deinit();
 
     for (tests) |t| {
         var lexer = Lexer.init(t.input);
-        var p = init(allocator, &lexer);
+        var p = init(&ast_arena, &lexer);
 
         const program = try p.parseProgram();
         defer p.deinit();
@@ -871,9 +902,12 @@ test "function parameters" {
 
 test "call expression" {
     const allocator = testing.allocator;
+    var ast_arena = std.heap.ArenaAllocator.init(allocator);
+    defer ast_arena.deinit();
+
     const input = "add(1, 2 * 3, 4 + 5);";
     var lexer = Lexer.init(input);
-    var p = init(allocator, &lexer);
+    var p = init(&ast_arena, &lexer);
 
     const program = try p.parseProgram();
     defer p.deinit();
