@@ -1,4 +1,5 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const testing = std.testing;
 const ArenaAllocator = std.heap.ArenaAllocator;
 
@@ -60,7 +61,6 @@ pub fn eval(node: ast.Node, env: *Environment) anyerror!object.Object {
                 const args = try evalExpressions(call_expr.arguments, env);
                 if (args.len == 1 and args[0] == .@"error") return args[0];
                 const res = try applyFunction(function.function, args);
-                std.debug.print("res: {s}\n", .{res.inspect()});
                 return res;
             },
         },
@@ -161,8 +161,7 @@ fn evalIdentifier(ident: ast.Identifier, env: *Environment) !object.Object {
 }
 
 fn evalExpressions(expressions: []ast.Expression, env: *Environment) ![]object.Object {
-    const arena = env.allocator;
-    var result = std.ArrayList(object.Object).init(arena.allocator());
+    var result = std.ArrayList(object.Object).init(env.allocator);
     defer result.deinit();
 
     for (expressions) |expr| {
@@ -175,18 +174,21 @@ fn evalExpressions(expressions: []ast.Expression, env: *Environment) ![]object.O
 }
 
 fn applyFunction(func: Function, args: []object.Object) !object.Object {
-    var extended_env = try extendFunctionEnv(func, args);
-    const evaluated = try eval(func.body.node(), &extended_env);
+    const extended_env = try extendFunctionEnv(func, args);
+    const evaluated = try eval(func.body.node(), extended_env);
     return unwrapReturnValue(evaluated);
 }
 
-fn extendFunctionEnv(func: Function, args: []object.Object) !Environment {
-    const closure_arena = func.env.allocator;
-    var extended_env = Environment.init_enclosed(closure_arena, func.env);
-    for (func.params, args) |param, arg| {
-        try extended_env.set(param.value, arg);
+fn extendFunctionEnv(func: Function, args: []object.Object) !*Environment {
+    const allocator = func.env.allocator;
+
+    const extended_env_ptr = try allocator.create(Environment);
+    extended_env_ptr.* = Environment.init_enclosed(allocator, func.env);
+
+    for (func.params, 0..) |param, i| {
+        try extended_env_ptr.set(param.value, args[i]);
     }
-    return extended_env;
+    return extended_env_ptr;
 }
 
 fn unwrapReturnValue(obj: object.Object) object.Object {
@@ -199,35 +201,35 @@ fn unwrapReturnValue(obj: object.Object) object.Object {
 fn testEval(input: []const u8) !object.Object {
     const allocator = testing.allocator;
 
+    var env_arena = ArenaAllocator.init(allocator);
+    defer env_arena.deinit();
+
+    const env_alloc = env_arena.allocator();
+    var env = Environment.init(env_alloc);
+    // defer env.deinit();
+
     var ast_arena = ArenaAllocator.init(allocator);
     defer ast_arena.deinit();
 
-    var closure_arena = ArenaAllocator.init(allocator);
-    defer closure_arena.deinit();
-
     var lexer = Lexer.init(input);
-    var parser = Parser.init(&ast_arena, &lexer);
-    defer parser.deinit();
 
-    var env = Environment.init(&closure_arena);
-    defer env.deinit();
+    const parser_alloc = ast_arena.allocator();
+    var parser = Parser.init(parser_alloc, &lexer);
+    defer parser.deinit();
 
     const program = try parser.parseProgram();
 
     return try eval(program.*.node(), &env);
 }
 
-fn testEvalUnmanaged(ast_arena: *ArenaAllocator, closure_arena: *ArenaAllocator, input: []const u8) !object.Object {
+fn testEvalUnmanaged(allocator: Allocator, env: *Environment, input: []const u8) !object.Object {
     var lexer = Lexer.init(input);
-    var parser = Parser.init(ast_arena, &lexer);
+    var parser = Parser.init(allocator, &lexer);
     defer parser.deinit();
-
-    var env = Environment.init(closure_arena);
-    defer env.deinit();
 
     const program = try parser.parseProgram();
 
-    return try eval(program.*.node(), &env);
+    return try eval(program.*.node(), env);
 }
 
 fn testIntegerObject(obj: object.Object, expected: i64) !void {
@@ -412,13 +414,17 @@ test "function" {
 
     const allocator = testing.allocator;
 
-    var closure_arena = ArenaAllocator.init(allocator);
-    defer closure_arena.deinit();
+    var env_arena = ArenaAllocator.init(allocator);
+    defer env_arena.deinit();
+
+    const env_alloc = env_arena.allocator();
+    var environment = Environment.init(env_alloc);
+    defer environment.deinit();
 
     var ast_arena = ArenaAllocator.init(allocator);
     defer ast_arena.deinit();
 
-    const evaluated = try testEvalUnmanaged(&ast_arena, &closure_arena, input);
+    const evaluated = try testEvalUnmanaged(ast_arena.allocator(), &environment, input);
 
     try testing.expectEqual(1, evaluated.function.params.len);
     try testing.expectEqualStrings("x", evaluated.function.params[0].value);
@@ -437,35 +443,41 @@ test "function application" {
         .{ .input = "let add = fn(x, y) { x + y; }; add(5, add(5, 5));", .expected = 15 },
     };
 
-    var closure_arena = ArenaAllocator.init(testing.allocator);
-    defer closure_arena.deinit();
-
-    var ast_arena = ArenaAllocator.init(testing.allocator);
-    defer ast_arena.deinit();
-
     for (tests) |t| {
-        const evaluated = try testEvalUnmanaged(&ast_arena, &closure_arena, t.input);
+        var env_arena = ArenaAllocator.init(testing.allocator);
+        defer env_arena.deinit();
+
+        const env_alloc = env_arena.allocator();
+        var environment = Environment.init(env_alloc);
+        defer environment.deinit();
+
+        var ast_arena = ArenaAllocator.init(testing.allocator);
+        defer ast_arena.deinit();
+
+        const evaluated = try testEvalUnmanaged(ast_arena.allocator(), &environment, t.input);
         try testIntegerObject(evaluated, t.expected);
     }
 }
 
-// BUG: this segfaults:
+test "closures" {
+    const input =
+        \\let newAdder = fn(x) {
+        \\    fn(y) { x + y; };
+        \\};
+        \\let addTwo = newAdder(2);
+        \\addTwo(2);
+    ;
 
-// test "closures" {
-//     const input =
-//         \\let newAdder = fn(x) {
-//         \\    fn(y) { x + y; };
-//         \\};
-//         \\let addTwo = newAdder(2);
-//         \\addTwo(2);
-//     ;
-//
-//     var closure_arena = ArenaAllocator.init(testing.allocator);
-//     defer closure_arena.deinit();
-//
-//     var ast_arena = ArenaAllocator.init(testing.allocator);
-//     defer ast_arena.deinit();
-//
-//     const evaluated = try testEvalUnmanaged(&ast_arena, &closure_arena, input);
-//     try testIntegerObject(evaluated, 4);
-// }
+    var env_arena = ArenaAllocator.init(testing.allocator);
+    defer env_arena.deinit();
+
+    const env_alloc = env_arena.allocator();
+    var environment = Environment.init(env_alloc);
+    defer environment.deinit();
+
+    var ast_arena = ArenaAllocator.init(testing.allocator);
+    defer ast_arena.deinit();
+
+    const evaluated = try testEvalUnmanaged(ast_arena.allocator(), &environment, input);
+    try testIntegerObject(evaluated, 4);
+}

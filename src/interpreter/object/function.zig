@@ -10,14 +10,11 @@ env: *Environment,
 const Self = @This();
 
 pub fn init(params_in: []ast.Identifier, body_in: *ast.BlockStatement, env: *Environment) !Self {
-    const arena = env.allocator;
-    const allocator = arena.allocator();
-
-    const body = try allocator.create(ast.BlockStatement);
+    const body = try env.allocator.create(ast.BlockStatement);
     body.* = body_in.*;
 
     return Self{
-        .params = try allocator.dupe(ast.Identifier, params_in),
+        .params = try env.allocator.dupe(ast.Identifier, params_in),
         .body = body.*,
         .env = env,
     };
@@ -37,7 +34,9 @@ pub fn inspect(self: Self) []const u8 {
     }
 
     func_str.appendSlice(") ") catch unreachable;
+    func_str.appendSlice("{\n\t") catch unreachable;
     func_str.appendSlice(self.body.toString()) catch unreachable;
+    func_str.appendSlice("\n}") catch unreachable;
 
     return func_str.toOwnedSlice() catch unreachable;
 }
