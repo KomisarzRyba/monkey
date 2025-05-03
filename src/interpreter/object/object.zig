@@ -3,10 +3,12 @@ const std = @import("std");
 const Boolean = @import("boolean.zig");
 const Error = @import("error.zig");
 const Integer = @import("integer.zig");
+const String = @import("string.zig");
 const Function = @import("function.zig");
 
 pub const Object = union(enum) {
     integer: Integer,
+    string: String,
     boolean: *const Boolean,
     null,
     @"return": *Object,
@@ -18,6 +20,7 @@ pub const Object = union(enum) {
     pub fn inspect(self: Self) []const u8 {
         return switch (self) {
             .integer => |i| i.inspect(),
+            .string => |s| s.inspect(),
             .boolean => |b| b.inspect(),
             .null => "null",
             .@"return" => |r| r.*.inspect(),
@@ -38,6 +41,7 @@ pub const Object = union(enum) {
     pub fn truthy(self: Object) bool {
         return switch (self) {
             .integer => |i| i.truthy(),
+            .string => |s| s.truthy(),
             .boolean => |b| b.truthy(),
             .null => false,
             .@"return" => |r| r.*.truthy(),

@@ -33,6 +33,7 @@ pub fn eval(node: ast.Node, env: *Environment) anyerror!object.Object {
         },
         .expression => |expr| switch (expr) {
             .integer_literal => |int_lit| .{ .integer = .{ .value = int_lit.value } },
+            .string_literal => |str_lit| .{ .string = .{ .value = str_lit.value } },
             .boolean_literal => |bool_lit| .{ .boolean = if (bool_lit.value) &Boolean.True else &Boolean.False },
             .prefix => |prefix_expr| {
                 const right = try eval(prefix_expr.right.node(), env);
@@ -266,6 +267,12 @@ test "integer expression" {
         const evaluated = try testEval(t.input);
         try testIntegerObject(evaluated, t.expected);
     }
+}
+
+test "string expression" {
+    const input = "\"Hello World!\";";
+    const evaluated = try testEval(input);
+    try testing.expectEqualStrings("Hello World!", evaluated.string.value);
 }
 
 test "boolean expression" {
