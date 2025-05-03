@@ -99,6 +99,7 @@ pub const BlockStatement = struct {
 pub const Expression = union(enum) {
     identifier: Identifier,
     integer_literal: IntegerLiteralExpression,
+    string_literal: StringLiteralExpression,
     prefix: PrefixExpression,
     infix: InfixExpression,
     boolean_literal: BooleanLiteralExpression,
@@ -110,6 +111,7 @@ pub const Expression = union(enum) {
         return switch (self) {
             .identifier => |e| e.toString(),
             .integer_literal => |e| e.toString(),
+            .string_literal => |e| e.toString(),
             .prefix => |e| e.toString(),
             .infix => |e| e.toString(),
             .boolean_literal => |e| e.toString(),
@@ -141,6 +143,19 @@ pub const IntegerLiteralExpression = struct {
         return std.fmt.allocPrint(
             std.heap.page_allocator,
             "{d}",
+            .{self.value},
+        ) catch unreachable;
+    }
+};
+
+pub const StringLiteralExpression = struct {
+    token: Token,
+    value: []const u8,
+
+    pub fn toString(self: StringLiteralExpression) []const u8 {
+        return std.fmt.allocPrint(
+            std.heap.page_allocator,
+            "\"{s}\"",
             .{self.value},
         ) catch unreachable;
     }

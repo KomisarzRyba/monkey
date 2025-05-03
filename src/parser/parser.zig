@@ -178,6 +178,15 @@ fn parseIntegerLiteral(self: *Self) !?ast.Expression {
     };
 }
 
+fn parseStringLiteral(self: *Self) !?ast.Expression {
+    return ast.Expression{
+        .string_literal = ast.StringLiteralExpression{
+            .token = self.cur_token,
+            .value = self.cur_token.literal,
+        },
+    };
+}
+
 fn parsePrefixExpression(self: *Self) !?ast.Expression {
     const prefix_token = self.cur_token;
     self.nextToken();
@@ -463,6 +472,7 @@ fn getPrefixParseFn(token_type: Token.Type) ?*const PrefixParseFn {
     return switch (token_type) {
         .ident => parseIdentifier,
         .int => parseIntegerLiteral,
+        .string => parseStringLiteral,
         .minus => parsePrefixExpression,
         .bang => parsePrefixExpression,
         .true => parseBooleanLiteral,
@@ -609,6 +619,35 @@ test "integer literal expression" {
 
     const stmt = program.statements[0];
     try testLiteralExpression(stmt.expression.expression, 5);
+
+    std.debug.print("program:\n{s}\n", .{program.toString()});
+}
+
+test "string literal expression" {
+    const allocator = testing.allocator;
+
+    var ast_arena = std.heap.ArenaAllocator.init(allocator);
+    defer ast_arena.deinit();
+
+    const input = "\"hello world\";";
+    var lexer = Lexer.init(input);
+
+    const parser_alloc = ast_arena.allocator();
+    var p = init(parser_alloc, &lexer);
+
+    const program = try p.parseProgram();
+    defer p.deinit();
+
+    if (p.getErrors().len > 0) {
+        for (p.getErrors()) |err| {
+            std.debug.print("parser error: {s}\n", .{err.toString()});
+        }
+    }
+
+    try testing.expectEqual(1, program.statements.len);
+
+    const stmt = program.statements[0];
+    try testStringLiteral(stmt.expression.expression, "hello world");
 
     std.debug.print("program:\n{s}\n", .{program.toString()});
 }
@@ -999,6 +1038,12 @@ fn testIntegerLiteral(expr: ast.Expression, value: i64) !void {
     const int_lit = expr.integer_literal;
     try testing.expectEqual(.int, int_lit.token.token_type);
     try testing.expectEqual(value, int_lit.value);
+}
+
+fn testStringLiteral(expr: ast.Expression, value: []const u8) !void {
+    const str_lit = expr.string_literal;
+    try testing.expectEqual(.string, str_lit.token.token_type);
+    try testing.expectEqualStrings(value, str_lit.value);
 }
 
 fn testIdentifier(ident: ast.Identifier, value: []const u8) !void {
