@@ -135,6 +135,7 @@ fn evalIntegerInfixExpression(operator: ast.InfixOperator, left: Integer, right:
         .minus => .{ .integer = .{ .value = left.value - right.value } },
         .asterisk => .{ .integer = .{ .value = left.value * right.value } },
         .slash => .{ .integer = .{ .value = @divFloor(left.value, right.value) } },
+        .mod => .{ .integer = .{ .value = @rem(left.value, right.value) } },
         .lt => .{ .boolean = if (left.value < right.value) &Boolean.True else &Boolean.False },
         .lte => .{ .boolean = if (left.value <= right.value) &Boolean.True else &Boolean.False },
         .gt => .{ .boolean = if (left.value > right.value) &Boolean.True else &Boolean.False },
@@ -278,6 +279,8 @@ test "integer expression" {
         .{ .input = "3 * 3 * 3 + 10;", .expected = 37 },
         .{ .input = "3 * (3 * 3) + 10;", .expected = 37 },
         .{ .input = "(5 + 10 * 2 + 15 / 3) * 2 + -10;", .expected = 50 },
+        .{ .input = "4 % 2;", .expected = 0 },
+        .{ .input = "5 % 2;", .expected = 1 },
     };
 
     for (tests) |t| {

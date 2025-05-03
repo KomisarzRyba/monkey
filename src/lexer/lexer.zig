@@ -49,6 +49,8 @@ pub fn next(self: *Self) Token {
         },
         '*' => .asterisk,
         '/' => .slash,
+        '%' => .mod,
+
         '<' => peek: {
             if (self.peekChar() == '=') {
                 self.readChar();
@@ -200,6 +202,7 @@ test "monkey" {
         \\10 != 9;
         \\"foobar"
         \\"foo bar"
+        \\10 % 5 == 0;
     ;
 
     const tests = [_]struct {
@@ -281,6 +284,12 @@ test "monkey" {
         .{ .token_type = .semicolon, .literal = ";" },
         .{ .token_type = .string, .literal = "foobar" },
         .{ .token_type = .string, .literal = "foo bar" },
+        .{ .token_type = .int, .literal = "10" },
+        .{ .token_type = .mod, .literal = "%" },
+        .{ .token_type = .int, .literal = "5" },
+        .{ .token_type = .eq, .literal = "==" },
+        .{ .token_type = .int, .literal = "0" },
+        .{ .token_type = .semicolon, .literal = ";" },
     };
 
     var lexer = init(input);

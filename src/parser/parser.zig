@@ -450,7 +450,7 @@ const Precedence = enum {
             .eq, .not_eq => .equals,
             .lt, .lte, .gt, .gte => .lessGreater,
             .plus, .minus => .sum,
-            .asterisk, .slash => .product,
+            .asterisk, .slash, .mod => .product,
             .lparen => .call,
             else => .lowest,
         };
@@ -490,6 +490,7 @@ fn getInfixParseFn(token_type: Token.Type) ?*const InfixParseFn {
         .minus => parseInfixExpression,
         .asterisk => parseInfixExpression,
         .slash => parseInfixExpression,
+        .mod => parseInfixExpression,
         .lt => parseInfixExpression,
         .lte => parseInfixExpression,
         .gt => parseInfixExpression,
