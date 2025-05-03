@@ -7,6 +7,7 @@ pub const Type = enum {
     // Identifiers + literals
     ident,
     int,
+    string,
 
     // Operators
     assign,
@@ -46,6 +47,7 @@ pub const Type = enum {
             .eof => "EOF",
             .ident => "IDENT",
             .int => "INT",
+            .string => "STRING",
             .assign => "=",
             .plus => "+",
             .minus => "-",
