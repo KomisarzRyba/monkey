@@ -10,6 +10,7 @@ const Environment = @import("environment.zig");
 const Boolean = @import("object/boolean.zig");
 const Error = @import("object/error.zig");
 const Integer = @import("object/integer.zig");
+const String = @import("object/string.zig");
 const object = @import("object/object.zig");
 const Function = @import("object/function.zig");
 
@@ -117,6 +118,8 @@ fn evalMinusPrefixOperatorExpression(right: object.Object) !object.Object {
 fn evalInfixExpression(operator: ast.InfixOperator, left: object.Object, right: object.Object) !object.Object {
     if (left == .integer and right == .integer) {
         return try evalIntegerInfixExpression(operator, left.integer, right.integer);
+    } else if (left == .string and right == .string) {
+        return try evalStringInfixExpression(operator, left.string, right.string);
     } else if (operator == .eq) {
         return .{ .boolean = if (left.eq(right)) &Boolean.True else &Boolean.False };
     } else if (operator == .not_eq) {
@@ -138,6 +141,21 @@ fn evalIntegerInfixExpression(operator: ast.InfixOperator, left: Integer, right:
         .gte => .{ .boolean = if (left.value >= right.value) &Boolean.True else &Boolean.False },
         .eq => .{ .boolean = if (left.value == right.value) &Boolean.True else &Boolean.False },
         .not_eq => .{ .boolean = if (left.value != right.value) &Boolean.True else &Boolean.False },
+    };
+}
+
+fn evalStringInfixExpression(operator: ast.InfixOperator, left: String, right: String) !object.Object {
+    return switch (operator) {
+        .plus => .{
+            .string = .{
+                .value = try std.fmt.allocPrint(
+                    std.heap.page_allocator,
+                    "{s}{s}",
+                    .{ left.value, right.value },
+                ),
+            },
+        },
+        else => object.Object{ .@"error" = Error.new("unknown operator: string {s} string", .{operator.toString()}) },
     };
 }
 
@@ -207,7 +225,6 @@ fn testEval(input: []const u8) !object.Object {
 
     const env_alloc = env_arena.allocator();
     var env = Environment.init(env_alloc);
-    // defer env.deinit();
 
     var ast_arena = ArenaAllocator.init(allocator);
     defer ast_arena.deinit();
@@ -390,6 +407,7 @@ test "error handling" {
         .{ .input = "if (10 > 1) { true + false; }", .expected = "unknown operator: boolean + boolean" },
         .{ .input = "if (10 > 1) { if (10 > 1) { return true + false; } return 1; }", .expected = "unknown operator: boolean + boolean" },
         .{ .input = "foobar;", .expected = "identifier not found: foobar" },
+        .{ .input = "\"Hello\" - \"World\";", .expected = "unknown operator: string - string" },
     };
 
     for (tests) |t| {
@@ -487,4 +505,10 @@ test "closures" {
 
     const evaluated = try testEvalUnmanaged(ast_arena.allocator(), &environment, input);
     try testIntegerObject(evaluated, 4);
+}
+
+test "string concatenation" {
+    const input = "\"Hello\" + \" \" + \"World!\";";
+    const evaluated = try testEval(input);
+    try testing.expectEqualStrings("Hello World!", evaluated.string.value);
 }
