@@ -1,0 +1,7 @@
+let hello = "Hello";
+
+let greet = fn (name) {
+    return hello + ", " + name + "!";
+}
+
+greet("World");
