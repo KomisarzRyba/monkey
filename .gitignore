@@ -3,3 +3,6 @@ zig-out/
 
 # Editor files
 .vscode/
+
+# Garbage
+.DS_Store
