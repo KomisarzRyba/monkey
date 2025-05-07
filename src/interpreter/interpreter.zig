@@ -415,7 +415,6 @@ test "error handling" {
 
     for (tests) |t| {
         const evaluated = try testEval(t.input);
-        std.debug.print("evaluated: {s}\n", .{evaluated.inspect()});
         try testing.expectEqualStrings(t.expected, evaluated.@"error".message);
     }
 }

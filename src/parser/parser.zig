@@ -538,8 +538,6 @@ test "let statements" {
         const let_stmt = program.statements[0].let;
         try testIdentifier(let_stmt.name, t.expected_identifier);
         try testLiteralExpression(let_stmt.value, t.expected_value);
-
-        std.debug.print("program:\n{s}\n", .{program.toString()});
     }
 }
 
@@ -563,8 +561,6 @@ test "return statements" {
     defer p.deinit();
 
     try testing.expectEqual(3, program.statements.len);
-
-    std.debug.print("program:\n{s}\n", .{program.toString()});
 }
 
 test "identifier expression" {
@@ -620,8 +616,6 @@ test "integer literal expression" {
 
     const stmt = program.statements[0];
     try testLiteralExpression(stmt.expression.expression, 5);
-
-    std.debug.print("program:\n{s}\n", .{program.toString()});
 }
 
 test "string literal expression" {
@@ -649,8 +643,6 @@ test "string literal expression" {
 
     const stmt = program.statements[0];
     try testStringLiteral(stmt.expression.expression, "hello world");
-
-    std.debug.print("program:\n{s}\n", .{program.toString()});
 }
 
 test "prefix expressions" {
@@ -688,8 +680,6 @@ test "prefix expressions" {
         const stmt = program.statements[0];
         try testing.expectEqual(t.operator, stmt.expression.expression.prefix.operator);
         try testLiteralExpression(stmt.expression.expression.prefix.right.*, t.value);
-
-        std.debug.print("program:\n{s}\n", .{program.toString()});
     }
 }
 
@@ -723,8 +713,6 @@ test "infix expressions" {
 
         const program = try p.parseProgram();
         defer p.deinit();
-
-        std.debug.print("program:\n{s}\n", .{program.toString()});
 
         if (p.getErrors().len > 0) {
             for (p.getErrors()) |err| {
@@ -766,7 +754,6 @@ test "boolean literal expression" {
         const stmt = program.statements[i];
         try testLiteralExpression(stmt.expression.expression, value);
     }
-    std.debug.print("program:\n{s}\n", .{program.toString()});
 }
 
 test "operator precedence parsing" {
@@ -819,8 +806,6 @@ test "operator precedence parsing" {
 
         const actual = program.toString();
         try testing.expectEqualStrings(t.expected, actual);
-
-        std.debug.print("program:\n{s}\n", .{actual});
     }
 }
 
@@ -855,8 +840,6 @@ test "if expression" {
     try testLiteralExpression(consequence_stmt.expression.expression, "x");
 
     try testing.expectEqual(null, stmt.expression.expression.@"if".alternative);
-
-    std.debug.print("program:\n{s}\n", .{program.toString()});
 }
 
 test "if else expression" {
@@ -893,8 +876,6 @@ test "if else expression" {
 
     const alternative_stmt = stmt.expression.expression.@"if".alternative.?.statements[0];
     try testLiteralExpression(alternative_stmt.expression.expression, "y");
-
-    std.debug.print("program:\n{s}\n", .{program.toString()});
 }
 
 test "function literal expression" {
@@ -927,8 +908,6 @@ test "function literal expression" {
     try testing.expectEqual(1, fn_lit.body.statements.len);
     const body_stmt = fn_lit.body.statements[0];
     try testInfixExpression(body_stmt.expression.expression, "x", ast.InfixOperator.plus, "y");
-
-    std.debug.print("program:\n{s}\n", .{program.toString()});
 }
 
 test "function parameters" {
@@ -969,8 +948,6 @@ test "function parameters" {
         for (t.expected_params, 0..) |param, i| {
             try testIdentifier(fn_lit.parameters[i], param);
         }
-
-        std.debug.print("program:\n{s}\n", .{program.toString()});
     }
 }
 
@@ -1003,8 +980,6 @@ test "call expression" {
     try testLiteralExpression(call_expr.arguments[0], 1);
     try testInfixExpression(call_expr.arguments[1], 2, ast.InfixOperator.asterisk, 3);
     try testInfixExpression(call_expr.arguments[2], 4, ast.InfixOperator.plus, 5);
-
-    std.debug.print("program:\n{s}\n", .{program.toString()});
 }
 
 fn testInfixExpression(
