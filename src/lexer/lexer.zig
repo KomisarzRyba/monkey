@@ -167,14 +167,17 @@ fn readNumber(self: *Self) []const u8 {
 fn readString(self: *Self) []const u8 {
     self.readChar();
     const start_pos = self.pos;
-    while (self.hasNextChar() and self.ch != '"') {
+
+    while (self.ch != 0 and self.ch != '"') {
         self.readChar();
     }
-    if (self.hasNextChar()) {
+    const end_pos = self.pos;
+
+    if (self.ch == '"') {
         self.readChar();
-        return self.input[start_pos .. self.pos - 1];
     }
-    return self.input[start_pos..self.pos];
+
+    return self.input[start_pos..end_pos];
 }
 
 fn skipWhitespace(self: *Self) void {
