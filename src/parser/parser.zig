@@ -34,7 +34,7 @@ pub fn parseProgram(self: *Self) !*ast.Program {
     var statements = std.ArrayList(ast.Statement).init(self.alloc);
     errdefer statements.deinit();
 
-    while (self.cur_token.token_type != .eof) {
+    while (!self.curTokenIs(.eof)) {
         const stmt = try self.parseStatement();
         if (stmt) |s| {
             try statements.append(s);
